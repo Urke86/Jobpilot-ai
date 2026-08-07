@@ -8,6 +8,7 @@ import {
   Calendar,
   DollarSign,
   ArrowRight,
+  FileText,
 } from 'lucide-react';
 
 import {
@@ -26,105 +27,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
-import { mockApplications } from '../data/mock';
-import type { ApplicationStage } from '../types';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STAGES: ApplicationStage[] = [
-  'preparing',
-  'applied',
-  'questionnaire',
-  'interview',
-  'assignment',
-  'offer',
-  'rejected',
-];
-
-const STAGE_LABELS: Record<ApplicationStage, string> = {
-  preparing: 'Preparing',
-  applied: 'Applied',
-  questionnaire: 'Questionnaire',
-  interview: 'Interview',
-  assignment: 'Assignment',
-  offer: 'Offer',
-  rejected: 'Rejected',
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getStageBadgeClass(stage: ApplicationStage): string {
-  switch (stage) {
-    case 'preparing':
-      return 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-100';
-    case 'applied':
-      return 'border-blue-300 bg-blue-100 text-blue-700 hover:bg-blue-100';
-    case 'questionnaire':
-      return 'border-yellow-300 bg-yellow-100 text-yellow-700 hover:bg-yellow-100';
-    case 'interview':
-      return 'border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-100';
-    case 'assignment':
-      return 'border-orange-300 bg-orange-100 text-orange-700 hover:bg-orange-100';
-    case 'offer':
-      return 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100';
-    case 'rejected':
-      return 'border-red-300 bg-red-100 text-red-700 hover:bg-red-100';
-  }
-}
-
-function getColumnHeaderClass(stage: ApplicationStage): string {
-  switch (stage) {
-    case 'preparing':
-      return 'bg-gray-100 text-gray-700';
-    case 'applied':
-      return 'bg-blue-100 text-blue-700';
-    case 'questionnaire':
-      return 'bg-yellow-100 text-yellow-700';
-    case 'interview':
-      return 'bg-sky-100 text-sky-700';
-    case 'assignment':
-      return 'bg-orange-100 text-orange-700';
-    case 'offer':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'rejected':
-      return 'bg-red-100 text-red-700';
-  }
-}
-
-function getColumnBorderClass(stage: ApplicationStage): string {
-  switch (stage) {
-    case 'preparing':
-      return 'border-t-gray-400';
-    case 'applied':
-      return 'border-t-blue-400';
-    case 'questionnaire':
-      return 'border-t-yellow-400';
-    case 'interview':
-      return 'border-t-sky-400';
-    case 'assignment':
-      return 'border-t-orange-400';
-    case 'offer':
-      return 'border-t-emerald-400';
-    case 'rejected':
-      return 'border-t-red-400';
-  }
-}
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import {
+  APPLICATION_STAGES,
+  APPLICATION_STAGE_LABELS,
+} from '@/constants/status';
+import { useResource } from '@/hooks/use-resource';
+import { listApplications } from '@/services';
+import type { Application } from '@/types';
+import {
+  getStageBadgeClass,
+  getColumnHeaderClass,
+  getColumnBorderClass,
+} from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Kanban View
 // ---------------------------------------------------------------------------
 
-function KanbanView() {
+function KanbanView({ applications }: { applications: Application[] }) {
   return (
     <div className="overflow-x-auto pb-4">
       <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
-        {STAGES.map((stage) => {
-          const apps = mockApplications.filter((a) => a.stage === stage);
+        {APPLICATION_STAGES.map((stage) => {
+          const apps = applications.filter((a) => a.stage === stage);
 
           return (
             <div
@@ -137,7 +64,7 @@ function KanbanView() {
                   <span
                     className={`inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-semibold ${getColumnHeaderClass(stage)}`}
                   >
-                    {STAGE_LABELS[stage]}
+                    {APPLICATION_STAGE_LABELS[stage]}
                   </span>
                 </div>
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
@@ -154,7 +81,7 @@ function KanbanView() {
                 )}
 
                 {apps.map((app) => (
-                  <Link key={app.id} to={`/applications/${app.id}`}>
+                  <Link key={app.id} to={ROUTES.applicationDetail(app.id)}>
                     <Card className="cursor-pointer shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
                       <CardContent className="p-4 space-y-3">
                         {/* Company & Position */}
@@ -211,7 +138,11 @@ function KanbanView() {
 // Table View
 // ---------------------------------------------------------------------------
 
-function ApplicationsTableView() {
+function ApplicationsTableView({
+  applications,
+}: {
+  applications: Application[];
+}) {
   return (
     <Card>
       <CardHeader>
@@ -231,24 +162,24 @@ function ApplicationsTableView() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockApplications.map((app) => (
+            {applications.map((app) => (
               <TableRow key={app.id} className="cursor-pointer">
                 <TableCell>
                   <Link
-                    to={`/applications/${app.id}`}
+                    to={ROUTES.applicationDetail(app.id)}
                     className="font-medium hover:underline"
                   >
                     {app.company}
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Link to={`/applications/${app.id}`}>
+                  <Link to={ROUTES.applicationDetail(app.id)}>
                     {app.position}
                   </Link>
                 </TableCell>
                 <TableCell>
                   <Badge className={getStageBadgeClass(app.stage)}>
-                    {STAGE_LABELS[app.stage]}
+                    {APPLICATION_STAGE_LABELS[app.stage]}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
@@ -280,6 +211,13 @@ type ViewMode = 'kanban' | 'table';
 
 export default function ApplicationsPage() {
   const [view, setView] = useState<ViewMode>('kanban');
+  const { data: applications, isLoading } = useResource(listApplications, []);
+
+  if (isLoading) {
+    return <LoadingState label="Loading applications…" />;
+  }
+
+  const apps = applications ?? [];
 
   return (
     <div className="space-y-6">
@@ -316,7 +254,17 @@ export default function ApplicationsPage() {
       </div>
 
       {/* Content */}
-      {view === 'kanban' ? <KanbanView /> : <ApplicationsTableView />}
+      {apps.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No applications yet"
+          description="Applications you track will appear here across every stage."
+        />
+      ) : view === 'kanban' ? (
+        <KanbanView applications={apps} />
+      ) : (
+        <ApplicationsTableView applications={apps} />
+      )}
     </div>
   );
 }

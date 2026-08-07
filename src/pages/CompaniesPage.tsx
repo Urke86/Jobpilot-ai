@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Star, Users, Bot, Briefcase, ExternalLink, ArrowRight } from 'lucide-react';
-import { mockCompanies } from '../data/mock';
-import type { Company } from '../types';
+import { Star, Users, Bot, Briefcase, ExternalLink, ArrowRight, Building2 } from 'lucide-react';
+import type { Company } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -9,29 +8,11 @@ import {
   CardFooter,
   CardHeader,
 } from '@/components/ui/card';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const AVATAR_COLORS = [
-  'bg-blue-600',
-  'bg-emerald-600',
-  'bg-violet-600',
-  'bg-amber-600',
-  'bg-rose-600',
-  'bg-cyan-600',
-  'bg-indigo-600',
-  'bg-pink-600',
-];
-
-function companyColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { useResource } from '@/hooks/use-resource';
+import { listCompanies } from '@/services';
+import { getCompanyColor, getCompanyInitials } from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Company Card
@@ -45,11 +26,11 @@ function CompanyCard({ company }: { company: Company }) {
           <div className="flex items-center gap-3">
             {/* Company initial circle */}
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white ${companyColor(
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white ${getCompanyColor(
                 company.name
               )}`}
             >
-              {company.name.charAt(0)}
+              {getCompanyInitials(company.name)}
             </div>
 
             <div className="min-w-0">
@@ -98,7 +79,7 @@ function CompanyCard({ company }: { company: Company }) {
 
       <CardFooter className="pt-0 pb-4 flex items-center justify-between border-t mt-auto pt-4">
         <Link
-          to={`/companies/${company.id}`}
+          to={ROUTES.companyDetail(company.id)}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 transition-colors"
         >
           View Details
@@ -125,6 +106,14 @@ function CompanyCard({ company }: { company: Company }) {
 // ---------------------------------------------------------------------------
 
 export default function CompaniesPage() {
+  const { data: companies, isLoading } = useResource(listCompanies, []);
+
+  if (isLoading) {
+    return <LoadingState label="Loading companies…" />;
+  }
+
+  const allCompanies = companies ?? [];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -136,11 +125,19 @@ export default function CompaniesPage() {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockCompanies.map((company) => (
-          <CompanyCard key={company.id} company={company} />
-        ))}
-      </div>
+      {allCompanies.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="No companies yet"
+          description="Companies you track will appear here."
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {allCompanies.map((company) => (
+            <CompanyCard key={company.id} company={company} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

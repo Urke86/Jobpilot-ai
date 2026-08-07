@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
@@ -27,14 +27,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-
-import { mockApplications } from '../data/mock';
-import type { Application, ApplicationStage } from '../types';
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { APPLICATION_STAGE_LABELS } from '@/constants/status';
+import { useResource } from '@/hooks/use-resource';
+import { getApplicationById } from '@/services';
+import type { Application, ApplicationStage } from '@/types';
+import { getStageBadgeClass } from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Pipeline stages shown in the timeline (excludes rejected). */
 const PIPELINE_STAGES: ApplicationStage[] = [
   'preparing',
   'applied',
@@ -44,38 +49,9 @@ const PIPELINE_STAGES: ApplicationStage[] = [
   'offer',
 ];
 
-const STAGE_LABELS: Record<ApplicationStage, string> = {
-  preparing: 'Preparing',
-  applied: 'Applied',
-  questionnaire: 'Questionnaire',
-  interview: 'Interview',
-  assignment: 'Assignment',
-  offer: 'Offer',
-  rejected: 'Rejected',
-};
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function getStageBadgeClass(stage: ApplicationStage): string {
-  switch (stage) {
-    case 'preparing':
-      return 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-100';
-    case 'applied':
-      return 'border-blue-300 bg-blue-100 text-blue-700 hover:bg-blue-100';
-    case 'questionnaire':
-      return 'border-yellow-300 bg-yellow-100 text-yellow-700 hover:bg-yellow-100';
-    case 'interview':
-      return 'border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-100';
-    case 'assignment':
-      return 'border-orange-300 bg-orange-100 text-orange-700 hover:bg-orange-100';
-    case 'offer':
-      return 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-100';
-    case 'rejected':
-      return 'border-red-300 bg-red-100 text-red-700 hover:bg-red-100';
-  }
-}
 
 /** Returns the index within PIPELINE_STAGES that the application has reached. */
 function getCurrentStageIndex(stage: ApplicationStage): number {
@@ -158,7 +134,7 @@ function ApplicationTimeline({ application }: { application: Application }) {
                           : 'text-muted-foreground'
                     }`}
                   >
-                    {STAGE_LABELS[stage]}
+                    {APPLICATION_STAGE_LABELS[stage]}
                   </p>
                   {status === 'current' && (
                     <p className="text-xs text-muted-foreground">
@@ -196,39 +172,31 @@ function ApplicationTimeline({ application }: { application: Application }) {
 }
 
 // ---------------------------------------------------------------------------
-// Not Found State
-// ---------------------------------------------------------------------------
-
-function NotFoundState() {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <FileText className="h-8 w-8 text-muted-foreground" />
-      </div>
-      <h2 className="text-xl font-semibold">Application Not Found</h2>
-      <p className="mt-1 text-muted-foreground">
-        The application you're looking for doesn't exist or has been removed.
-      </p>
-      <Button asChild className="mt-6">
-        <Link to="/applications">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Applications
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const application = mockApplications.find((a) => a.id === id);
+  const navigate = useNavigate();
+  const { data: application, isLoading } = useResource(
+    () => (id ? getApplicationById(id) : Promise.resolve(null)),
+    [id],
+  );
+
+  if (isLoading) {
+    return <LoadingState label="Loading application…" />;
+  }
 
   if (!application) {
-    return <NotFoundState />;
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Application Not Found"
+        description="The application you're looking for doesn't exist or has been removed."
+        actionLabel="Back to Applications"
+        onAction={() => navigate(ROUTES.applications)}
+      />
+    );
   }
 
   const mockNotesText =
@@ -239,7 +207,7 @@ export default function ApplicationDetailPage() {
     <div className="space-y-6">
       {/* Back Button */}
       <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link to="/applications">
+        <Link to={ROUTES.applications}>
           <ArrowLeft className="mr-1.5 h-4 w-4" />
           Back to Applications
         </Link>
@@ -258,7 +226,7 @@ export default function ApplicationDetailPage() {
             <Badge
               className={`text-sm px-3 py-1 ${getStageBadgeClass(application.stage)}`}
             >
-              {STAGE_LABELS[application.stage]}
+              {APPLICATION_STAGE_LABELS[application.stage]}
             </Badge>
             <span className="flex items-center gap-1 text-sm text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" />

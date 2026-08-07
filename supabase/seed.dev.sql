@@ -1,0 +1,31 @@
+-- Optional development seed for JobPilot AI.
+-- NOT applied automatically (no auth.users row exists before Phase 3).
+--
+-- Usage after creating a local/dev user:
+--   1. Sign up via Supabase Auth (or Dashboard → Authentication → Users)
+--   2. Replace :user_id below with that user's UUID
+--   3. Run this file in the SQL editor (or psql) as a privileged role
+--
+-- RLS remains enforced for authenticated clients; do not disable it for seeding.
+
+-- Example (commented out intentionally):
+--
+-- insert into public.profiles (user_id, full_name, headline, location, target_roles, remote_preference)
+-- values (
+--   ':user_id',
+--   'Demo Candidate',
+--   'Senior Product Engineer',
+--   'Remote · Europe',
+--   array['Product Engineer', 'Full-Stack Engineer'],
+--   'remote'
+-- );
+--
+-- insert into public.companies (user_id, name, website, industry, company_size, ai_focus)
+-- values (
+--   ':user_id',
+--   'Supabase',
+--   'https://supabase.com',
+--   'Developer Tools',
+--   '100-200',
+--   'AI database features including vector embeddings'
+-- );

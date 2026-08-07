@@ -13,7 +13,6 @@ import {
   Mail,
   MapPin,
 } from 'lucide-react';
-import { mockCompanies, mockJobs } from '../data/mock';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -31,36 +30,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const AVATAR_COLORS = [
-  'bg-blue-600',
-  'bg-emerald-600',
-  'bg-violet-600',
-  'bg-amber-600',
-  'bg-rose-600',
-  'bg-cyan-600',
-  'bg-indigo-600',
-  'bg-pink-600',
-];
-
-function companyColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-function getScoreColor(score: number) {
-  if (score >= 90) return 'text-emerald-600';
-  if (score >= 80) return 'text-blue-600';
-  if (score >= 70) return 'text-yellow-600';
-  return 'text-gray-500';
-}
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { useResource } from '@/hooks/use-resource';
+import { getCompanyById, getJobsByCompanyName } from '@/services';
+import type { Company, Job } from '@/types';
+import {
+  getCompanyColor,
+  getCompanyInitials,
+  getScoreColor,
+} from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Page
@@ -69,37 +48,41 @@ function getScoreColor(score: number) {
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const company = mockCompanies.find((c) => c.id === id);
 
-  // ------ Not Found State ------
-  if (!company) {
+  const { data, isLoading } = useResource(
+    async (): Promise<{ company: Company; jobs: Job[] } | null> => {
+      if (!id) return null;
+      const company = await getCompanyById(id);
+      if (!company) return null;
+      const jobs = await getJobsByCompanyName(company.name);
+      return { company, jobs };
+    },
+    [id],
+  );
+
+  if (isLoading) {
+    return <LoadingState label="Loading company…" />;
+  }
+
+  if (!data) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <Building2 className="h-14 w-14 text-muted-foreground mb-4" />
-        <h2 className="text-2xl font-semibold">Company not found</h2>
-        <p className="text-muted-foreground mt-2 max-w-sm">
-          The company you're looking for doesn't exist or may have been removed.
-        </p>
-        <Button variant="outline" className="mt-6" asChild>
-          <Link to="/companies">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Companies
-          </Link>
-        </Button>
-      </div>
+      <EmptyState
+        icon={Building2}
+        title="Company not found"
+        description="The company you're looking for doesn't exist or may have been removed."
+        actionLabel="Back to Companies"
+        onAction={() => navigate(ROUTES.companies)}
+      />
     );
   }
 
-  // Jobs at this company
-  const companyJobs = mockJobs.filter(
-    (job) => job.company.toLowerCase() === company.name.toLowerCase()
-  );
+  const { company, jobs: companyJobs } = data;
 
   return (
     <div className="space-y-6">
       {/* Back Button */}
       <Button variant="ghost" size="sm" className="-ml-2" asChild>
-        <Link to="/companies">
+        <Link to={ROUTES.companies}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Companies
         </Link>
@@ -111,11 +94,11 @@ export default function CompanyDetailPage() {
       <div className="flex flex-col sm:flex-row items-start gap-5">
         {/* Large company initial circle */}
         <div
-          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-2xl font-bold text-white ${companyColor(
+          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-2xl font-bold text-white ${getCompanyColor(
             company.name
           )}`}
         >
-          {company.name.charAt(0)}
+          {getCompanyInitials(company.name)}
         </div>
 
         <div className="flex-1 min-w-0 space-y-2">
@@ -215,7 +198,7 @@ export default function CompanyDetailPage() {
                         <TableRow
                           key={job.id}
                           className="group cursor-pointer hover:bg-muted/50"
-                          onClick={() => navigate(`/jobs/${job.id}`)}
+                          onClick={() => navigate(ROUTES.jobDetail(job.id))}
                         >
                             <TableCell className="font-medium group-hover:text-primary transition-colors">
                               {job.position}

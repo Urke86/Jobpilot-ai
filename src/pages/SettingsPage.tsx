@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 import {
@@ -28,6 +28,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { useTheme, type ThemeMode } from '@/contexts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,7 +60,7 @@ interface NotificationsState {
 }
 
 interface AppearanceState {
-  theme: 'light' | 'dark' | 'system';
+  theme: ThemeMode;
   compactMode: boolean;
   showMatchScores: boolean;
   showAiRecommendations: boolean;
@@ -141,6 +142,8 @@ const jobSourceOptions = [
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useTheme();
+
   // Profile state
   const [profile, setProfile] = useState<ProfileState>({
     fullName: 'Alex Johnson',
@@ -171,11 +174,16 @@ export default function SettingsPage() {
 
   // Appearance state
   const [appearance, setAppearance] = useState<AppearanceState>({
-    theme: 'system',
+    theme,
     compactMode: false,
     showMatchScores: true,
     showAiRecommendations: true,
   });
+
+  // Keep local appearance.theme in sync with ThemeContext
+  useEffect(() => {
+    setAppearance((prev) => ({ ...prev, theme }));
+  }, [theme]);
 
   // ------ Handlers ------
 
@@ -201,6 +209,11 @@ export default function SettingsPage() {
     key: K,
     value: AppearanceState[K],
   ) => setAppearance((prev) => ({ ...prev, [key]: value }));
+
+  const handleThemeChange = (value: ThemeMode) => {
+    setTheme(value);
+    updateAppearance('theme', value);
+  };
 
   // -----------------------------------------------------------------------
 
@@ -471,7 +484,7 @@ export default function SettingsPage() {
                   return (
                     <button
                       key={option.value}
-                      onClick={() => updateAppearance('theme', option.value)}
+                      onClick={() => handleThemeChange(option.value)}
                       className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                         isSelected
                           ? 'border-primary bg-primary/5'

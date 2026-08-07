@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   MapPin,
@@ -14,9 +14,8 @@ import {
   BookmarkPlus,
   FileText,
   MessageSquare,
+  Briefcase,
 } from 'lucide-react';
-import { mockJobs } from '../data/mock';
-import type { Job } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,67 +26,21 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { REMOTE_TYPE_LABELS } from '@/constants/status';
+import { useResource } from '@/hooks/use-resource';
+import { getJobById } from '@/services';
+import {
+  getJobStatusStyle,
+  getRecommendationStyle,
+  getScoreColor,
+  getScoreRingBorderColor,
+} from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function getStatusStyle(status: Job['status']) {
-  switch (status) {
-    case 'new':
-      return 'bg-blue-100 text-blue-700 border-blue-200';
-    case 'shortlisted':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    case 'applied':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'interviewing':
-      return 'bg-purple-100 text-purple-700 border-purple-200';
-    case 'offer':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    case 'rejected':
-      return 'bg-red-100 text-red-700 border-red-200';
-    case 'archived':
-      return 'bg-gray-100 text-gray-600 border-gray-200';
-  }
-}
-
-function getRecommendationStyle(rec: Job['recommendation']) {
-  switch (rec) {
-    case 'strong':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'good':
-      return 'bg-blue-100 text-blue-700 border-blue-200';
-    case 'moderate':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    case 'weak':
-      return 'bg-red-100 text-red-700 border-red-200';
-  }
-}
-
-function getScoreColor(score: number) {
-  if (score >= 90) return 'text-emerald-600';
-  if (score >= 80) return 'text-blue-600';
-  if (score >= 70) return 'text-yellow-600';
-  return 'text-gray-500';
-}
-
-function getScoreRingColor(score: number) {
-  if (score >= 90) return 'border-emerald-500 bg-emerald-50';
-  if (score >= 80) return 'border-blue-500 bg-blue-50';
-  if (score >= 70) return 'border-yellow-500 bg-yellow-50';
-  return 'border-gray-400 bg-gray-50';
-}
-
-function getRemoteLabel(type: Job['remoteType']) {
-  switch (type) {
-    case 'fully-remote':
-      return 'Fully Remote';
-    case 'hybrid':
-      return 'Hybrid';
-    case 'on-site':
-      return 'On-site';
-  }
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -126,22 +79,25 @@ const aiRecommendationText =
 
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const job = mockJobs.find((j) => j.id === id);
+  const navigate = useNavigate();
+  const { data: job, isLoading } = useResource(
+    () => (id ? getJobById(id) : Promise.resolve(null)),
+    [id],
+  );
+
+  if (isLoading) {
+    return <LoadingState label="Loading job…" />;
+  }
 
   if (!job) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <h2 className="text-2xl font-bold mb-2">Job not found</h2>
-        <p className="text-muted-foreground mb-6">
-          The job you're looking for doesn't exist or has been removed.
-        </p>
-        <Button asChild>
-          <Link to="/jobs">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Jobs
-          </Link>
-        </Button>
-      </div>
+      <EmptyState
+        icon={Briefcase}
+        title="Job not found"
+        description="The job you're looking for doesn't exist or has been removed."
+        actionLabel="Back to Jobs"
+        onAction={() => navigate(ROUTES.jobs)}
+      />
     );
   }
 
@@ -149,7 +105,7 @@ export default function JobDetailPage() {
     <div className="space-y-6">
       {/* Back button */}
       <Link
-        to="/jobs"
+        to={ROUTES.jobs}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -164,7 +120,7 @@ export default function JobDetailPage() {
           </h2>
           <Badge
             variant="outline"
-            className={`capitalize ${getStatusStyle(job.status)}`}
+            className={`capitalize ${getJobStatusStyle(job.status)}`}
           >
             {job.status}
           </Badge>
@@ -179,7 +135,7 @@ export default function JobDetailPage() {
           </span>
           <Badge variant="secondary" className="text-xs">
             <Wifi className="mr-1 h-3 w-3" />
-            {getRemoteLabel(job.remoteType)}
+            {REMOTE_TYPE_LABELS[job.remoteType]}
           </Badge>
           <span className="inline-flex items-center gap-1.5">
             <DollarSign className="h-4 w-4" />
@@ -276,7 +232,7 @@ export default function JobDetailPage() {
               {/* Match Score */}
               <div className="flex items-center gap-4">
                 <div
-                  className={`flex h-16 w-16 items-center justify-center rounded-full border-[3px] ${getScoreRingColor(
+                  className={`flex h-16 w-16 items-center justify-center rounded-full border-[3px] ${getScoreRingBorderColor(
                     job.matchScore
                   )}`}
                 >

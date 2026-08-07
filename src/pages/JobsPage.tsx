@@ -1,8 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { mockJobs } from '../data/mock';
-import type { Job } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,89 +18,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getScoreColor(score: number) {
-  if (score >= 90) return 'text-emerald-600';
-  if (score >= 80) return 'text-blue-600';
-  if (score >= 70) return 'text-yellow-600';
-  return 'text-gray-500';
-}
-
-function getScoreRingColor(score: number) {
-  if (score >= 90) return 'bg-emerald-500';
-  if (score >= 80) return 'bg-blue-500';
-  if (score >= 70) return 'bg-yellow-500';
-  return 'bg-gray-400';
-}
-
-function getRecommendationStyle(rec: Job['recommendation']) {
-  switch (rec) {
-    case 'strong':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'good':
-      return 'bg-blue-100 text-blue-700 border-blue-200';
-    case 'moderate':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    case 'weak':
-      return 'bg-red-100 text-red-700 border-red-200';
-  }
-}
-
-function getStatusStyle(status: Job['status']) {
-  switch (status) {
-    case 'new':
-      return 'bg-blue-100 text-blue-700 border-blue-200';
-    case 'shortlisted':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    case 'applied':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'interviewing':
-      return 'bg-purple-100 text-purple-700 border-purple-200';
-    case 'offer':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    case 'rejected':
-      return 'bg-red-100 text-red-700 border-red-200';
-    case 'archived':
-      return 'bg-gray-100 text-gray-600 border-gray-200';
-  }
-}
-
-function companyColor(name: string) {
-  const colors = [
-    'bg-blue-500',
-    'bg-emerald-500',
-    'bg-violet-500',
-    'bg-amber-500',
-    'bg-rose-500',
-    'bg-cyan-500',
-    'bg-indigo-500',
-    'bg-pink-500',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+import { EmptyState, LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { useResource } from '@/hooks/use-resource';
+import { listJobs } from '@/services';
+import {
+  getCompanyColor,
+  getJobStatusStyle,
+  getRecommendationStyle,
+  getScoreColor,
+  getScoreRingColor,
+} from '@/utils';
 
 export default function JobsPage() {
   const navigate = useNavigate();
+  const { data: jobs, isLoading } = useResource(listJobs, []);
   const [remoteFilter, setRemoteFilter] = useState('all');
   const [scoreFilter, setScoreFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
 
+  const allJobs = useMemo(() => jobs ?? [], [jobs]);
+
   const filteredJobs = useMemo(() => {
-    return mockJobs.filter((job) => {
+    return allJobs.filter((job) => {
       if (remoteFilter !== 'all' && job.remoteType !== remoteFilter) return false;
 
       if (scoreFilter !== 'all') {
@@ -119,17 +59,21 @@ export default function JobsPage() {
         if (
           !job.position.toLowerCase().includes(q) &&
           !job.company.toLowerCase().includes(q)
-        )
+        ) {
           return false;
+        }
       }
 
       return true;
     });
-  }, [remoteFilter, scoreFilter, sourceFilter, statusFilter, search]);
+  }, [allJobs, remoteFilter, scoreFilter, sourceFilter, statusFilter, search]);
+
+  if (isLoading) {
+    return <LoadingState label="Loading jobs…" />;
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
@@ -138,13 +82,11 @@ export default function JobsPage() {
           </p>
         </div>
         <Badge variant="secondary" className="text-sm px-3 py-1">
-          {filteredJobs.length} / {mockJobs.length} jobs
+          {filteredJobs.length} / {allJobs.length} jobs
         </Badge>
       </div>
 
-      {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-4">
-        {/* Remote Type */}
         <Select value={remoteFilter} onValueChange={setRemoteFilter}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Remote Type" />
@@ -157,7 +99,6 @@ export default function JobsPage() {
           </SelectContent>
         </Select>
 
-        {/* Score */}
         <Select value={scoreFilter} onValueChange={setScoreFilter}>
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="Score" />
@@ -170,7 +111,6 @@ export default function JobsPage() {
           </SelectContent>
         </Select>
 
-        {/* Source */}
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Source" />
@@ -186,7 +126,6 @@ export default function JobsPage() {
           </SelectContent>
         </Select>
 
-        {/* Status */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Status" />
@@ -200,8 +139,7 @@ export default function JobsPage() {
           </SelectContent>
         </Select>
 
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by position or company…"
@@ -212,16 +150,12 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {/* Table */}
       {filteredJobs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-          <Search className="h-10 w-10 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No jobs match your filters</h3>
-          <p className="text-muted-foreground mt-1 max-w-sm">
-            Try adjusting your filters or search query to find more
-            opportunities.
-          </p>
-        </div>
+        <EmptyState
+          icon={Search}
+          title="No jobs match your filters"
+          description="Try adjusting your filters or search query to find more opportunities."
+        />
       ) : (
         <div className="rounded-lg border bg-card">
           <Table>
@@ -246,79 +180,64 @@ export default function JobsPage() {
                   className={`group cursor-pointer transition-colors hover:bg-muted/50 ${
                     idx % 2 === 1 ? 'bg-muted/20' : ''
                   }`}
-                  onClick={() => navigate(`/jobs/${job.id}`)}
+                  onClick={() => navigate(ROUTES.jobDetail(job.id))}
                 >
-                    {/* Company */}
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block h-3 w-3 shrink-0 rounded-full ${companyColor(
-                            job.company
-                          )}`}
-                        />
-                        <span className="truncate">{job.company}</span>
-                      </div>
-                    </TableCell>
-
-                    {/* Position */}
-                    <TableCell className="font-medium group-hover:text-primary transition-colors">
-                      {job.position}
-                    </TableCell>
-
-                    {/* Location */}
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {job.location}
-                    </TableCell>
-
-                    {/* Salary */}
-                    <TableCell className="hidden lg:table-cell text-muted-foreground">
-                      {job.salary}
-                    </TableCell>
-
-                    {/* Source */}
-                    <TableCell className="hidden lg:table-cell text-muted-foreground">
-                      {job.source}
-                    </TableCell>
-
-                    {/* Match Score */}
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <span
-                          className={`inline-block h-2.5 w-2.5 rounded-full ${getScoreRingColor(
-                            job.matchScore
-                          )}`}
-                        />
-                        <span
-                          className={`font-semibold ${getScoreColor(
-                            job.matchScore
-                          )}`}
-                        >
-                          {job.matchScore}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    {/* Recommendation */}
-                    <TableCell className="hidden sm:table-cell">
-                      <Badge
-                        variant="outline"
-                        className={`capitalize ${getRecommendationStyle(
-                          job.recommendation
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block h-3 w-3 shrink-0 rounded-full ${getCompanyColor(
+                          job.company,
+                        )}`}
+                      />
+                      <span className="truncate">{job.company}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium transition-colors group-hover:text-primary">
+                    {job.position}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
+                    {job.location}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">
+                    {job.salary}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">
+                    {job.source}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span
+                        className={`inline-block h-2.5 w-2.5 rounded-full ${getScoreRingColor(
+                          job.matchScore,
+                        )}`}
+                      />
+                      <span
+                        className={`font-semibold ${getScoreColor(
+                          job.matchScore,
                         )}`}
                       >
-                        {job.recommendation}
-                      </Badge>
-                    </TableCell>
-
-                    {/* Status */}
-                    <TableCell className="text-right">
-                      <Badge
-                        variant="outline"
-                        className={`capitalize ${getStatusStyle(job.status)}`}
-                      >
-                        {job.status}
-                      </Badge>
-                    </TableCell>
+                        {job.matchScore}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge
+                      variant="outline"
+                      className={`capitalize ${getRecommendationStyle(
+                        job.recommendation,
+                      )}`}
+                    >
+                      {job.recommendation}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Badge
+                      variant="outline"
+                      className={`capitalize ${getJobStatusStyle(job.status)}`}
+                    >
+                      {job.status}
+                    </Badge>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

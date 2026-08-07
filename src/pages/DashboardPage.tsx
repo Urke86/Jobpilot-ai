@@ -34,59 +34,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
+import { LoadingState } from '@/components/common';
+import { ROUTES } from '@/constants/routes';
+import { useResource } from '@/hooks/use-resource';
 import {
-  dashboardStats,
-  jobsBySource,
-  applicationsByStatus,
-  mockJobs,
-  mockActivities,
-} from '../data/mock';
-import type { Activity } from '../types';
+  getDashboardStats,
+  getJobsBySourceChart,
+  getApplicationsByStatusChart,
+  listJobs,
+  listActivities,
+} from '@/services';
+import type { Activity } from '@/types';
+import { getMatchScoreBadgeStyle, getJobStatusBadgeStyle } from '@/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function getMatchScoreBadge(score: number) {
-  if (score >= 85) {
-    return (
-      <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/25 hover:bg-emerald-500/20">
-        {score}%
-      </Badge>
-    );
-  }
-  if (score >= 70) {
-    return (
-      <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/25 hover:bg-blue-500/20">
-        {score}%
-      </Badge>
-    );
-  }
-  return (
-    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/25 hover:bg-amber-500/20">
-      {score}%
-    </Badge>
-  );
-}
-
-function getStatusBadge(status: string) {
-  const styles: Record<string, string> = {
-    new: 'bg-blue-500/15 text-blue-600 border-blue-500/25',
-    shortlisted: 'bg-violet-500/15 text-violet-600 border-violet-500/25',
-    applied: 'bg-sky-500/15 text-sky-600 border-sky-500/25',
-    interviewing: 'bg-amber-500/15 text-amber-600 border-amber-500/25',
-    offer: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/25',
-    rejected: 'bg-red-500/15 text-red-600 border-red-500/25',
-    archived: 'bg-zinc-500/15 text-zinc-500 border-zinc-500/25',
-  };
-
-  return (
-    <Badge className={styles[status] ?? styles.new}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-}
 
 function getActivityDotColor(type: Activity['type']): string {
   switch (type) {
@@ -104,40 +67,6 @@ function getActivityDotColor(type: Activity['type']): string {
       return 'bg-muted-foreground';
   }
 }
-
-// ---------------------------------------------------------------------------
-// Stat cards config
-// ---------------------------------------------------------------------------
-
-const statCards = [
-  {
-    label: 'Total Jobs',
-    value: dashboardStats.totalJobs,
-    icon: Briefcase,
-    extra: '+12 this week',
-    extraColor: 'text-emerald-600',
-  },
-  {
-    label: 'Shortlisted',
-    value: dashboardStats.shortlisted,
-    icon: Star,
-  },
-  {
-    label: 'Active Applications',
-    value: dashboardStats.activeApplications,
-    icon: Send,
-  },
-  {
-    label: 'Interviews',
-    value: dashboardStats.interviews,
-    icon: Calendar,
-  },
-  {
-    label: 'Response Rate',
-    value: `${dashboardStats.responseRate}%`,
-    icon: TrendingUp,
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Custom tooltip for charts
@@ -189,10 +118,69 @@ const pipelineColors = [
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const recentJobs = mockJobs.slice(0, 5);
-  const sortedActivities = [...mockActivities].sort(
+  const { data: stats, isLoading: statsLoading } = useResource(
+    getDashboardStats,
+    [],
+  );
+  const { data: jobsBySource, isLoading: sourceLoading } = useResource(
+    getJobsBySourceChart,
+    [],
+  );
+  const { data: applicationsByStatus, isLoading: statusLoading } = useResource(
+    getApplicationsByStatusChart,
+    [],
+  );
+  const { data: jobs, isLoading: jobsLoading } = useResource(listJobs, []);
+  const { data: activities, isLoading: activitiesLoading } = useResource(
+    listActivities,
+    [],
+  );
+
+  const isLoading =
+    statsLoading ||
+    sourceLoading ||
+    statusLoading ||
+    jobsLoading ||
+    activitiesLoading;
+
+  if (isLoading || !stats || !jobsBySource || !applicationsByStatus) {
+    return <LoadingState label="Loading dashboard…" />;
+  }
+
+  const recentJobs = (jobs ?? []).slice(0, 5);
+  const sortedActivities = [...(activities ?? [])].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
+
+  const statCards = [
+    {
+      label: 'Total Jobs',
+      value: stats.totalJobs,
+      icon: Briefcase,
+      extra: '+12 this week',
+      extraColor: 'text-emerald-600',
+    },
+    {
+      label: 'Shortlisted',
+      value: stats.shortlisted,
+      icon: Star,
+    },
+    {
+      label: 'Active Applications',
+      value: stats.activeApplications,
+      icon: Send,
+    },
+    {
+      label: 'Interviews',
+      value: stats.interviews,
+      icon: Calendar,
+    },
+    {
+      label: 'Response Rate',
+      value: `${stats.responseRate}%`,
+      icon: TrendingUp,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -348,7 +336,7 @@ export default function DashboardPage() {
                   <TableRow key={job.id} className="cursor-pointer">
                     <TableCell>
                       <Link
-                        to={`/jobs/${job.id}`}
+                        to={ROUTES.jobDetail(job.id)}
                         className="flex items-center gap-2.5 font-medium hover:underline"
                       >
                         {job.companyLogo && (
@@ -362,14 +350,20 @@ export default function DashboardPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      <Link to={`/jobs/${job.id}`} className="hover:text-foreground transition-colors">
+                      <Link to={ROUTES.jobDetail(job.id)} className="hover:text-foreground transition-colors">
                         {job.position}
                       </Link>
                     </TableCell>
                     <TableCell className="text-center">
-                      {getMatchScoreBadge(job.matchScore)}
+                      <Badge className={getMatchScoreBadgeStyle(job.matchScore)}>
+                        {job.matchScore}%
+                      </Badge>
                     </TableCell>
-                    <TableCell>{getStatusBadge(job.status)}</TableCell>
+                    <TableCell>
+                      <Badge className={getJobStatusBadgeStyle(job.status)}>
+                        {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right text-muted-foreground whitespace-nowrap">
                       {format(new Date(job.postedAt), 'MMM d')}
                     </TableCell>

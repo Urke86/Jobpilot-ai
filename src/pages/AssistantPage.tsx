@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import type { ChatMessage } from '../types';
+import type { ChatMessage } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Quick‑action definitions
