@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import type { ChatMessage } from '@/types';
 
@@ -206,6 +207,15 @@ export default function AssistantPage() {
         </p>
       </div>
 
+      <Alert className="border-blue-200 bg-blue-50/80 text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
+        <Bot className="h-4 w-4" />
+        <AlertTitle>Coming in a future phase</AlertTitle>
+        <AlertDescription>
+          AI Assistant connects in a future phase. Your data is already secured
+          in Supabase. The chat below is a non-AI demo for UI preview only.
+        </AlertDescription>
+      </Alert>
+
       {/* Two‑column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* ---- Left Sidebar: Quick Actions ---- */}
@@ -339,7 +349,7 @@ export default function AssistantPage() {
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground/50 mt-2 text-center">
-                AI responses are simulated for demo purposes
+                Demo only — responses are canned and not connected to real AI
               </p>
             </div>
           </Card>

@@ -1,24 +1,31 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  LayoutGrid,
-  List,
   Building2,
   Calendar,
   DollarSign,
-  ArrowRight,
   FileText,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
-
+import { toast } from 'sonner';
+import { EmptyState, LoadingState } from '@/components/common';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -27,26 +34,56 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { EmptyState, LoadingState } from '@/components/common';
 import { ROUTES } from '@/constants/routes';
 import {
-  APPLICATION_STAGES,
   APPLICATION_STAGE_LABELS,
+  APPLICATION_STAGES,
 } from '@/constants/status';
 import { useResource } from '@/hooks/use-resource';
-import { listApplications } from '@/services';
-import type { Application } from '@/types';
 import {
-  getStageBadgeClass,
-  getColumnHeaderClass,
+  formatSalary,
+  listApplications,
+  listJobs,
+  setApplicationStage,
+  type ApplicationRecord,
+  type JobRecord,
+} from '@/services';
+import type { Enums } from '@/types/database';
+import {
   getColumnBorderClass,
+  getColumnHeaderClass,
+  getStageBadgeClass,
 } from '@/utils';
 
-// ---------------------------------------------------------------------------
-// Kanban View
-// ---------------------------------------------------------------------------
+type AppWithJob = ApplicationRecord & {
+  company: string;
+  position: string;
+  salary: string;
+};
 
-function KanbanView({ applications }: { applications: Application[] }) {
+function enrichApps(
+  applications: ApplicationRecord[],
+  jobs: JobRecord[],
+): AppWithJob[] {
+  const jobMap = new Map(jobs.map((j) => [j.id, j]));
+  return applications.map((app) => {
+    const job = jobMap.get(app.job_id);
+    return {
+      ...app,
+      company: job?.company_name_snapshot ?? 'Unknown company',
+      position: job?.job_title ?? 'Unknown role',
+      salary: job ? formatSalary(job) : 'Not specified',
+    };
+  });
+}
+
+function KanbanView({
+  applications,
+  onStageChange,
+}: {
+  applications: AppWithJob[];
+  onStageChange: (id: string, stage: Enums<'application_stage'>) => void;
+}) {
   return (
     <div className="overflow-x-auto pb-4">
       <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
@@ -56,23 +93,19 @@ function KanbanView({ applications }: { applications: Application[] }) {
           return (
             <div
               key={stage}
-              className={`min-w-[280px] flex flex-col rounded-xl border border-t-4 bg-muted/30 ${getColumnBorderClass(stage)}`}
+              className={`flex min-w-[280px] flex-col rounded-xl border border-t-4 bg-muted/30 ${getColumnBorderClass(stage)}`}
             >
-              {/* Column Header */}
               <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-semibold ${getColumnHeaderClass(stage)}`}
-                  >
-                    {APPLICATION_STAGE_LABELS[stage]}
-                  </span>
-                </div>
+                <span
+                  className={`inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-semibold ${getColumnHeaderClass(stage)}`}
+                >
+                  {APPLICATION_STAGE_LABELS[stage]}
+                </span>
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
                   {apps.length}
                 </span>
               </div>
 
-              {/* Cards */}
               <div className="flex flex-col gap-3 px-3 pb-3">
                 {apps.length === 0 && (
                   <p className="py-8 text-center text-xs text-muted-foreground">
@@ -81,10 +114,12 @@ function KanbanView({ applications }: { applications: Application[] }) {
                 )}
 
                 {apps.map((app) => (
-                  <Link key={app.id} to={ROUTES.applicationDetail(app.id)}>
-                    <Card className="cursor-pointer shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-                      <CardContent className="p-4 space-y-3">
-                        {/* Company & Position */}
+                  <Card
+                    key={app.id}
+                    className="shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <CardContent className="space-y-3 p-4">
+                      <Link to={ROUTES.applicationDetail(app.id)}>
                         <div>
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Building2 className="h-3.5 w-3.5" />
@@ -92,38 +127,44 @@ function KanbanView({ applications }: { applications: Application[] }) {
                               {app.company}
                             </span>
                           </div>
-                          <p className="mt-0.5 text-sm font-semibold leading-snug">
+                          <p className="mt-0.5 text-sm font-semibold leading-snug hover:text-primary">
                             {app.position}
                           </p>
                         </div>
+                      </Link>
 
-                        {/* Salary */}
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <DollarSign className="h-3.5 w-3.5" />
-                          <span className="text-xs">{app.salary}</span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <DollarSign className="h-3.5 w-3.5" />
+                        <span className="text-xs">{app.salary}</span>
+                      </div>
 
-                        {/* Applied Date */}
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span className="text-xs">
-                            Applied{' '}
-                            {format(new Date(app.appliedAt), 'MMM d, yyyy')}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span className="text-xs">
+                          Applied{' '}
+                          {format(new Date(app.application_date), 'MMM d, yyyy')}
+                        </span>
+                      </div>
 
-                        {/* Next Step */}
-                        {app.nextStep && (
-                          <div className="flex items-center gap-1.5 rounded-md bg-accent/50 px-2 py-1.5">
-                            <ArrowRight className="h-3.5 w-3.5 text-primary" />
-                            <span className="text-xs font-medium text-primary">
-                              {app.nextStep}
-                            </span>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Link>
+                      <Select
+                        value={app.stage}
+                        onValueChange={(v) =>
+                          onStageChange(app.id, v as Enums<'application_stage'>)
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {APPLICATION_STAGES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {APPLICATION_STAGE_LABELS[s]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             </div>
@@ -134,14 +175,12 @@ function KanbanView({ applications }: { applications: Application[] }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Table View
-// ---------------------------------------------------------------------------
-
 function ApplicationsTableView({
   applications,
+  onStageChange,
 }: {
-  applications: Application[];
+  applications: AppWithJob[];
+  onStageChange: (id: string, stage: Enums<'application_stage'>) => void;
 }) {
   return (
     <Card>
@@ -158,12 +197,11 @@ function ApplicationsTableView({
               <TableHead>Salary</TableHead>
               <TableHead>Applied Date</TableHead>
               <TableHead>Updated</TableHead>
-              <TableHead>Next Step</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {applications.map((app) => (
-              <TableRow key={app.id} className="cursor-pointer">
+              <TableRow key={app.id}>
                 <TableCell>
                   <Link
                     to={ROUTES.applicationDetail(app.id)}
@@ -178,21 +216,37 @@ function ApplicationsTableView({
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge className={getStageBadgeClass(app.stage)}>
-                    {APPLICATION_STAGE_LABELS[app.stage]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getStageBadgeClass(app.stage)}>
+                      {APPLICATION_STAGE_LABELS[app.stage]}
+                    </Badge>
+                    <Select
+                      value={app.stage}
+                      onValueChange={(v) =>
+                        onStageChange(app.id, v as Enums<'application_stage'>)
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[140px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {APPLICATION_STAGES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {APPLICATION_STAGE_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {app.salary}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {format(new Date(app.appliedAt), 'MMM d, yyyy')}
+                  {format(new Date(app.application_date), 'MMM d, yyyy')}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {format(new Date(app.updatedAt), 'MMM d, yyyy')}
-                </TableCell>
-                <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                  {app.nextStep ?? '—'}
+                  {format(new Date(app.updated_at), 'MMM d, yyyy')}
                 </TableCell>
               </TableRow>
             ))}
@@ -203,25 +257,41 @@ function ApplicationsTableView({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 type ViewMode = 'kanban' | 'table';
 
 export default function ApplicationsPage() {
   const [view, setView] = useState<ViewMode>('kanban');
-  const { data: applications, isLoading } = useResource(listApplications, []);
+  const {
+    data: applications,
+    isLoading: appsLoading,
+    refetch,
+  } = useResource(listApplications, []);
+  const { data: jobs, isLoading: jobsLoading } = useResource(listJobs, []);
 
-  if (isLoading) {
+  const enriched = useMemo(
+    () => enrichApps(applications ?? [], jobs ?? []),
+    [applications, jobs],
+  );
+
+  const handleStageChange = async (
+    id: string,
+    stage: Enums<'application_stage'>,
+  ) => {
+    try {
+      await setApplicationStage(id, stage);
+      toast.success(`Moved to ${APPLICATION_STAGE_LABELS[stage]}`);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update stage');
+    }
+  };
+
+  if (appsLoading || jobsLoading) {
     return <LoadingState label="Loading applications…" />;
   }
 
-  const apps = applications ?? [];
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Applications</h1>
@@ -230,7 +300,6 @@ export default function ApplicationsPage() {
           </p>
         </div>
 
-        {/* View Toggle */}
         <div className="flex items-center rounded-lg border bg-muted/50 p-1">
           <Button
             variant={view === 'kanban' ? 'default' : 'ghost'}
@@ -253,17 +322,22 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* Content */}
-      {apps.length === 0 ? (
+      {enriched.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No applications yet"
-          description="Applications you track will appear here across every stage."
+          description="Create an application from a job detail page to start tracking."
         />
       ) : view === 'kanban' ? (
-        <KanbanView applications={apps} />
+        <KanbanView
+          applications={enriched}
+          onStageChange={handleStageChange}
+        />
       ) : (
-        <ApplicationsTableView applications={apps} />
+        <ApplicationsTableView
+          applications={enriched}
+          onStageChange={handleStageChange}
+        />
       )}
     </div>
   );

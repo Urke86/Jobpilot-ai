@@ -17,3 +17,13 @@ export function requireSupabaseClient(): TypedSupabaseClient {
   }
   return client;
 }
+
+export async function requireUserId(): Promise<string> {
+  const supabase = requireSupabaseClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) throw new Error('You must be signed in to continue.');
+  return user.id;
+}

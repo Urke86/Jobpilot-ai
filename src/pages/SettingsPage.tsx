@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor } from 'lucide-react';
-
+import { useNavigate } from 'react-router-dom';
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { toast } from 'sonner';
+import { EmptyState, LoadingState } from '@/components/common';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -8,12 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -21,25 +21,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
-import { useTheme, type ThemeMode } from '@/contexts';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ProfileState {
-  fullName: string;
-  email: string;
-  title: string;
-  bio: string;
-}
+import { Textarea } from '@/components/ui/textarea';
+import { ROUTES } from '@/constants/routes';
+import { REMOTE_PREFERENCE_LABELS } from '@/constants/status';
+import { useAuth, useTheme, type ThemeMode } from '@/contexts';
+import { useResource } from '@/hooks/use-resource';
+import {
+  getCurrentProfile,
+  updateCurrentProfile,
+} from '@/services';
+import type { Enums } from '@/types/database';
 
 interface PreferencesState {
   remoteType: string;
@@ -65,10 +64,6 @@ interface AppearanceState {
   showMatchScores: boolean;
   showAiRecommendations: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Notification items config
-// ---------------------------------------------------------------------------
 
 interface NotificationItem {
   key: keyof NotificationsState;
@@ -109,24 +104,31 @@ const notificationItems: NotificationItem[] = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Theme options config
-// ---------------------------------------------------------------------------
-
 const themeOptions: {
   value: AppearanceState['theme'];
   label: string;
   icon: React.ElementType;
   description: string;
 }[] = [
-  { value: 'light', label: 'Light', icon: Sun, description: 'Light background with dark text' },
-  { value: 'dark', label: 'Dark', icon: Moon, description: 'Dark background with light text' },
-  { value: 'system', label: 'System', icon: Monitor, description: 'Follows your OS setting' },
+  {
+    value: 'light',
+    label: 'Light',
+    icon: Sun,
+    description: 'Light background with dark text',
+  },
+  {
+    value: 'dark',
+    label: 'Dark',
+    icon: Moon,
+    description: 'Dark background with light text',
+  },
+  {
+    value: 'system',
+    label: 'System',
+    icon: Monitor,
+    description: 'Follows your OS setting',
+  },
 ];
-
-// ---------------------------------------------------------------------------
-// Job‑source options
-// ---------------------------------------------------------------------------
 
 const jobSourceOptions = [
   'LinkedIn',
@@ -137,32 +139,38 @@ const jobSourceOptions = [
   'Company Websites',
 ];
 
-// ---------------------------------------------------------------------------
-// SettingsPage
-// ---------------------------------------------------------------------------
-
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { user, profile: authProfile, signOut, refreshProfile } = useAuth();
+  const {
+    data: profile,
+    isLoading,
+    error,
+    refetch,
+  } = useResource(getCurrentProfile, []);
 
-  // Profile state
-  const [profile, setProfile] = useState<ProfileState>({
-    fullName: 'Alex Johnson',
-    email: 'alex@example.com',
-    title: 'Senior Frontend Engineer',
-    bio: '',
-  });
+  const [fullName, setFullName] = useState('');
+  const [headline, setHeadline] = useState('');
+  const [location, setLocation] = useState('');
+  const [targetRoles, setTargetRoles] = useState('');
+  const [salaryMin, setSalaryMin] = useState('');
+  const [salaryCurrency, setSalaryCurrency] = useState('EUR');
+  const [remotePreference, setRemotePreference] =
+    useState<Enums<'remote_preference'>>('unknown');
+  const [masterCv, setMasterCv] = useState('');
+  const [portfolioSummary, setPortfolioSummary] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  // Preferences state
   const [preferences, setPreferences] = useState<PreferencesState>({
     remoteType: 'fully-remote',
-    minimumSalary: '$120,000',
-    preferredLocations: 'Remote, USA, Europe',
+    minimumSalary: '',
+    preferredLocations: '',
     jobSources: Object.fromEntries(jobSourceOptions.map((s) => [s, true])),
     minimumMatchScore: '70',
     autoShortlistThreshold: '85',
   });
 
-  // Notifications state
   const [notifications, setNotifications] = useState<NotificationsState>({
     newJobMatches: true,
     applicationStatus: true,
@@ -172,7 +180,6 @@ export default function SettingsPage() {
     companyUpdates: false,
   });
 
-  // Appearance state
   const [appearance, setAppearance] = useState<AppearanceState>({
     theme,
     compactMode: false,
@@ -180,15 +187,23 @@ export default function SettingsPage() {
     showAiRecommendations: true,
   });
 
-  // Keep local appearance.theme in sync with ThemeContext
+  useEffect(() => {
+    const source = profile ?? authProfile;
+    if (!source) return;
+    setFullName(source.full_name ?? '');
+    setHeadline(source.headline ?? '');
+    setLocation(source.location ?? '');
+    setTargetRoles((source.target_roles ?? []).join(', '));
+    setSalaryMin(source.salary_min != null ? String(source.salary_min) : '');
+    setSalaryCurrency(source.salary_currency || 'EUR');
+    setRemotePreference(source.remote_preference);
+    setMasterCv(source.master_cv_text ?? '');
+    setPortfolioSummary(source.portfolio_summary ?? '');
+  }, [profile, authProfile]);
+
   useEffect(() => {
     setAppearance((prev) => ({ ...prev, theme }));
   }, [theme]);
-
-  // ------ Handlers ------
-
-  const updateProfile = (field: keyof ProfileState, value: string) =>
-    setProfile((prev) => ({ ...prev, [field]: value }));
 
   const updatePreferences = (field: keyof PreferencesState, value: string) =>
     setPreferences((prev) => ({ ...prev, [field]: value }));
@@ -215,19 +230,68 @@ export default function SettingsPage() {
     updateAppearance('theme', value);
   };
 
-  // -----------------------------------------------------------------------
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const roles = targetRoles
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean);
+      const min = salaryMin.trim() ? Number(salaryMin) : null;
+      await updateCurrentProfile({
+        full_name: fullName.trim() || null,
+        headline: headline.trim() || null,
+        location: location.trim() || null,
+        target_roles: roles,
+        salary_min: min != null && Number.isFinite(min) ? min : null,
+        salary_currency: salaryCurrency.trim() || 'EUR',
+        remote_preference: remotePreference,
+        master_cv_text: masterCv.trim() || null,
+        portfolio_summary: portfolioSummary.trim() || null,
+      });
+      toast.success('Profile saved');
+      await refreshProfile();
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate(ROUTES.login);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sign out failed');
+    }
+  };
+
+  if (isLoading) {
+    return <LoadingState label="Loading settings…" />;
+  }
+
+  if (error && !authProfile) {
+    return (
+      <EmptyState
+        title="Could not load profile"
+        description={error.message}
+        actionLabel="Retry"
+        onAction={refetch}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="mt-1 text-sm text-muted-foreground">
           Manage your preferences
         </p>
       </div>
 
-      {/* Tabbed Sections */}
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -236,25 +300,22 @@ export default function SettingsPage() {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
         </TabsList>
 
-        {/* ============================================================== */}
-        {/* Profile Tab                                                    */}
-        {/* ============================================================== */}
         <TabsContent value="profile">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Personal Information</CardTitle>
               <CardDescription>
-                Update your personal details and public profile
+                Update your profile stored in Supabase
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
                   <Input
                     id="fullName"
-                    value={profile.fullName}
-                    onChange={(e) => updateProfile('fullName', e.target.value)}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -262,53 +323,138 @@ export default function SettingsPage() {
                   <Input
                     id="email"
                     type="email"
-                    value={profile.email}
-                    onChange={(e) => updateProfile('email', e.target.value)}
+                    value={user?.email ?? ''}
+                    disabled
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="title">Title / Role</Label>
+                <Label htmlFor="headline">Headline</Label>
                 <Input
-                  id="title"
-                  value={profile.title}
-                  onChange={(e) => updateProfile('title', e.target.value)}
+                  id="headline"
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
+                  placeholder="Senior Frontend Engineer"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Remote preference</Label>
+                  <Select
+                    value={remotePreference}
+                    onValueChange={(v) =>
+                      setRemotePreference(v as Enums<'remote_preference'>)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(
+                        Object.keys(
+                          REMOTE_PREFERENCE_LABELS,
+                        ) as Enums<'remote_preference'>[]
+                      ).map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {REMOTE_PREFERENCE_LABELS[key]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="targetRoles">
+                  Target roles (comma-separated)
+                </Label>
+                <Input
+                  id="targetRoles"
+                  value={targetRoles}
+                  onChange={(e) => setTargetRoles(e.target.value)}
+                  placeholder="Frontend Engineer, Full Stack Developer"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="salaryMin">Minimum salary</Label>
+                  <Input
+                    id="salaryMin"
+                    type="number"
+                    value={salaryMin}
+                    onChange={(e) => setSalaryMin(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="salaryCurrency">Currency</Label>
+                  <Input
+                    id="salaryCurrency"
+                    value={salaryCurrency}
+                    onChange={(e) => setSalaryCurrency(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="masterCv">Master CV text</Label>
+                <Textarea
+                  id="masterCv"
+                  rows={6}
+                  value={masterCv}
+                  onChange={(e) => setMasterCv(e.target.value)}
+                  placeholder="Paste your master CV content…"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
+                <Label htmlFor="portfolio">Portfolio summary</Label>
                 <Textarea
-                  id="bio"
-                  value={profile.bio}
-                  onChange={(e) => updateProfile('bio', e.target.value)}
-                  placeholder="Tell us a bit about yourself and your career goals..."
-                  rows={4}
+                  id="portfolio"
+                  rows={3}
+                  value={portfolioSummary}
+                  onChange={(e) => setPortfolioSummary(e.target.value)}
                 />
               </div>
 
-              <div className="flex justify-end">
-                <Button>Save Changes</Button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+                <Button onClick={handleSaveProfile} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ============================================================== */}
-        {/* Preferences Tab                                                */}
-        {/* ============================================================== */}
         <TabsContent value="preferences" className="space-y-6">
-          {/* Job Preferences */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Job Preferences</CardTitle>
               <CardDescription>
-                Define what you're looking for in your next role
+                Local preferences for this device (not synced yet)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="remoteType">Preferred Remote Type</Label>
                   <Select
@@ -325,7 +471,6 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="minimumSalary">Minimum Salary</Label>
                   <Input
@@ -353,7 +498,7 @@ export default function SettingsPage() {
 
               <div className="space-y-3">
                 <Label>Job Sources</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {jobSourceOptions.map((source) => (
                     <div key={source} className="flex items-center space-x-2">
                       <Checkbox
@@ -363,7 +508,7 @@ export default function SettingsPage() {
                       />
                       <Label
                         htmlFor={`source-${source}`}
-                        className="text-sm font-normal cursor-pointer"
+                        className="cursor-pointer text-sm font-normal"
                       >
                         {source}
                       </Label>
@@ -374,7 +519,6 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Search Preferences */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Search Preferences</CardTitle>
@@ -383,7 +527,7 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="minimumMatchScore">
                     Minimum Match Score (%)
@@ -396,11 +540,7 @@ export default function SettingsPage() {
                       updatePreferences('minimumMatchScore', e.target.value)
                     }
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Jobs below this score won't appear in your feed
-                  </p>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="autoShortlistThreshold">
                     Auto-shortlist Threshold (%)
@@ -416,18 +556,12 @@ export default function SettingsPage() {
                       )
                     }
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Jobs above this score are automatically shortlisted
-                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ============================================================== */}
-        {/* Notifications Tab                                              */}
-        {/* ============================================================== */}
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
@@ -435,7 +569,7 @@ export default function SettingsPage() {
                 Notification Preferences
               </CardTitle>
               <CardDescription>
-                Choose which notifications you'd like to receive
+                Local toggles for a future notifications phase
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -464,11 +598,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* ============================================================== */}
-        {/* Appearance Tab                                                 */}
-        {/* ============================================================== */}
         <TabsContent value="appearance" className="space-y-6">
-          {/* Theme Selection */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Theme</CardTitle>
@@ -477,13 +607,14 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {themeOptions.map((option) => {
                   const Icon = option.icon;
                   const isSelected = appearance.theme === option.value;
                   return (
                     <button
                       key={option.value}
+                      type="button"
                       onClick={() => handleThemeChange(option.value)}
                       className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                         isSelected
@@ -499,7 +630,7 @@ export default function SettingsPage() {
                       >
                         {option.label}
                       </span>
-                      <span className="text-xs text-muted-foreground text-center">
+                      <span className="text-center text-xs text-muted-foreground">
                         {option.description}
                       </span>
                     </button>
@@ -509,7 +640,6 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Display Toggles */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Display Options</CardTitle>
@@ -531,16 +661,14 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => updateAppearance('compactMode', v)}
                   />
                 </div>
-
                 <Separator />
-
                 <div className="flex items-center justify-between py-4">
                   <div className="space-y-0.5 pr-4">
                     <Label className="text-sm font-medium">
                       Show match scores
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Display AI-generated match percentages on job cards
+                      Display match percentages when analysis exists
                     </p>
                   </div>
                   <Switch
@@ -550,17 +678,14 @@ export default function SettingsPage() {
                     }
                   />
                 </div>
-
                 <Separator />
-
                 <div className="flex items-center justify-between py-4">
                   <div className="space-y-0.5 pr-4">
                     <Label className="text-sm font-medium">
                       Show AI recommendations
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Display AI-powered suggestions and insights throughout the
-                      app
+                      Display AI-powered suggestions when available
                     </p>
                   </div>
                   <Switch
@@ -571,6 +696,22 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Account</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

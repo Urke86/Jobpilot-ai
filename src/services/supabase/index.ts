@@ -1,4 +1,4 @@
-export { requireSupabaseClient } from './client';
+export { requireSupabaseClient, requireUserId } from './client';
 export type { TypedSupabaseClient } from './client';
 
 export { supabaseProfilesRepository } from './profiles';

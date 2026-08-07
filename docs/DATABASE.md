@@ -121,9 +121,16 @@ Pages must not call `supabase.from(...)` directly.
 
 `supabase/seed.dev.sql` is documentation-only (commented examples). Real seeds need an `auth.users` row and should never disable RLS.
 
-## Future notes (Phase 3+)
+## Application integration (Phase 3)
 
-1. Auth UI + auto-create `profiles` row on signup (`handle_new_user` trigger optional).
-2. Swap page adapters from mock → Supabase repositories + domain mappers.
-3. Wire `.env.local` with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`.
-4. Optional: `storage` buckets for CV uploads; keep out of MVP schema for now.
+The frontend now uses authenticated browser clients only (anon key + user JWT).
+All table access goes through `src/services/app/*` with `user_id` from `auth.getUser()`.
+RLS remains the authority for isolation.
+
+Profiles are created on signup via select-then-insert (`ensureProfile`) — existing rows are never overwritten.
+
+## Future notes (Phase 4+)
+
+1. OpenAI-backed `job_analysis` and `application_artifacts` generation.
+2. Optional server-side n8n writers (service role never in the browser).
+3. Optional Storage buckets for CV uploads.

@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
-import { Menu, Search, Bell, Sun, Moon } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { Menu, Search, Bell, Sun, Moon, LogOut } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -9,21 +10,55 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/contexts';
+import { useAuth, useTheme } from '@/contexts';
+import { ROUTES } from '@/constants/routes';
 import Sidebar, {
   AiInsightsCard,
   BrandMark,
   SidebarNav,
 } from '@/layouts/Sidebar';
 
+function getInitials(nameOrEmail: string): string {
+  const trimmed = nameOrEmail.trim();
+  if (!trimmed) return 'JP';
+  if (trimmed.includes('@')) {
+    return trimmed.slice(0, 2).toUpperCase();
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
 export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isDark, toggle: toggleTheme } = useTheme();
+  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const displayName = profile?.full_name?.trim() || user?.email || 'User';
+  const initials = useMemo(() => getInitials(displayName), [displayName]);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate(ROUTES.login);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sign out failed');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar />
+      <Sidebar onSignOut={handleSignOut} />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="flex w-64 flex-col p-0">
@@ -34,8 +69,16 @@ export default function AppLayout() {
           <div className="flex-1 p-4">
             <SidebarNav onNavigate={() => setMobileOpen(false)} />
           </div>
-          <div className="p-4">
+          <div className="space-y-3 p-4">
             <AiInsightsCard />
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={handleSignOut}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
           </div>
         </SheetContent>
       </Sheet>
@@ -88,11 +131,23 @@ export default function AppLayout() {
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
-          <Avatar className="ml-1 h-8 w-8 cursor-pointer">
-            <AvatarFallback className="bg-blue-600 text-xs font-medium text-white">
-              JP
-            </AvatarFallback>
-          </Avatar>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="ml-1 h-8 w-8 cursor-pointer">
+                  <AvatarFallback className="bg-blue-600 text-xs font-medium text-white">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{displayName}</p>
+                {user?.email && profile?.full_name ? (
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                ) : null}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
 

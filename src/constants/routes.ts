@@ -4,6 +4,8 @@
  */
 export const ROUTES = {
   root: '/',
+  login: '/login',
+  signup: '/signup',
   dashboard: '/dashboard',
   jobs: '/jobs',
   jobDetail: (id: string) => `/jobs/${id}` as const,
@@ -16,6 +18,8 @@ export const ROUTES = {
 } as const;
 
 export type AppRoute =
+  | typeof ROUTES.login
+  | typeof ROUTES.signup
   | typeof ROUTES.dashboard
   | typeof ROUTES.jobs
   | typeof ROUTES.applications

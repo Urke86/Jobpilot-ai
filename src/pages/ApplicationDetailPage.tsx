@@ -1,21 +1,20 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
+  Calendar,
   Check,
   Circle,
-  DollarSign,
-  Calendar,
   Clock,
-  ArrowRight,
-  Globe,
-  Send,
-  Sparkles,
-  RefreshCw,
-  XCircle,
+  DollarSign,
   FileText,
+  XCircle,
 } from 'lucide-react';
-
+import { toast } from 'sonner';
+import { EmptyState, LoadingState } from '@/components/common';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -23,24 +22,36 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { EmptyState, LoadingState } from '@/components/common';
+import { Textarea } from '@/components/ui/textarea';
 import { ROUTES } from '@/constants/routes';
-import { APPLICATION_STAGE_LABELS } from '@/constants/status';
+import {
+  APPLICATION_STAGE_LABELS,
+  APPLICATION_STAGES,
+} from '@/constants/status';
 import { useResource } from '@/hooks/use-resource';
-import { getApplicationById } from '@/services';
-import type { Application, ApplicationStage } from '@/types';
+import {
+  formatSalary,
+  getApplicationById,
+  getJobById,
+  listArtifactsByApplication,
+  setApplicationStage,
+  updateApplication,
+  type ApplicationRecord,
+} from '@/services';
+import type { Enums } from '@/types/database';
 import { getStageBadgeClass } from '@/utils';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Pipeline stages shown in the timeline (excludes rejected). */
-const PIPELINE_STAGES: ApplicationStage[] = [
+const PIPELINE_STAGES: Enums<'application_stage'>[] = [
   'preparing',
   'applied',
   'questionnaire',
@@ -49,22 +60,18 @@ const PIPELINE_STAGES: ApplicationStage[] = [
   'offer',
 ];
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Returns the index within PIPELINE_STAGES that the application has reached. */
-function getCurrentStageIndex(stage: ApplicationStage): number {
-  if (stage === 'rejected') return -1; // special case
+function getCurrentStageIndex(stage: Enums<'application_stage'>): number {
+  if (stage === 'rejected' || stage === 'withdrawn') return -1;
   return PIPELINE_STAGES.indexOf(stage);
 }
 
-// ---------------------------------------------------------------------------
-// Timeline Component
-// ---------------------------------------------------------------------------
-
-function ApplicationTimeline({ application }: { application: Application }) {
+function ApplicationTimeline({
+  application,
+}: {
+  application: ApplicationRecord;
+}) {
   const isRejected = application.stage === 'rejected';
+  const isWithdrawn = application.stage === 'withdrawn';
   const currentIdx = getCurrentStageIndex(application.stage);
 
   return (
@@ -79,9 +86,7 @@ function ApplicationTimeline({ application }: { application: Application }) {
         <div className="relative space-y-0">
           {PIPELINE_STAGES.map((stage, idx) => {
             let status: 'completed' | 'current' | 'upcoming';
-            if (isRejected) {
-              // For rejected apps, mark stages up through wherever they got rejected as completed-ish
-              // We'll treat all pipeline stages as upcoming/greyed since we don't know exactly where
+            if (isRejected || isWithdrawn) {
               status = 'upcoming';
             } else if (idx < currentIdx) {
               status = 'completed';
@@ -93,7 +98,6 @@ function ApplicationTimeline({ application }: { application: Application }) {
 
             return (
               <div key={stage} className="relative flex gap-4">
-                {/* Vertical line */}
                 {idx < PIPELINE_STAGES.length - 1 && (
                   <div
                     className={`absolute left-[15px] top-[32px] h-full w-0.5 ${
@@ -106,7 +110,6 @@ function ApplicationTimeline({ application }: { application: Application }) {
                   />
                 )}
 
-                {/* Icon */}
                 <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center">
                   {status === 'completed' ? (
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
@@ -123,7 +126,6 @@ function ApplicationTimeline({ application }: { application: Application }) {
                   )}
                 </div>
 
-                {/* Label */}
                 <div className="flex min-h-[56px] flex-col justify-center pb-4">
                   <p
                     className={`text-sm font-medium ${
@@ -149,7 +151,6 @@ function ApplicationTimeline({ application }: { application: Application }) {
             );
           })}
 
-          {/* Rejected indicator (shown separately) */}
           {isRejected && (
             <div className="relative flex gap-4 pt-2">
               <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center">
@@ -165,23 +166,93 @@ function ApplicationTimeline({ application }: { application: Application }) {
               </div>
             </div>
           )}
+
+          {isWithdrawn && (
+            <div className="relative flex gap-4 pt-2">
+              <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-600">
+                  <XCircle className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-sm font-medium text-zinc-600">Withdrawn</p>
+                <p className="text-xs text-muted-foreground">
+                  You withdrew this application
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 export default function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: application, isLoading } = useResource(
+  const [notes, setNotes] = useState('');
+  const [coverLetter, setCoverLetter] = useState('');
+  const [followUp, setFollowUp] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const {
+    data: application,
+    isLoading,
+    refetch,
+  } = useResource(
     () => (id ? getApplicationById(id) : Promise.resolve(null)),
     [id],
   );
+
+  const { data: job } = useResource(
+    () =>
+      application?.job_id
+        ? getJobById(application.job_id)
+        : Promise.resolve(null),
+    [application?.job_id],
+  );
+
+  const { data: artifacts, isLoading: artifactsLoading } = useResource(
+    () => (id ? listArtifactsByApplication(id) : Promise.resolve([])),
+    [id],
+  );
+
+  useEffect(() => {
+    if (!application) return;
+    setNotes(application.notes ?? '');
+    setCoverLetter(application.cover_letter ?? '');
+    setFollowUp(application.follow_up_date ?? '');
+  }, [application]);
+
+  const handleStageChange = async (stage: Enums<'application_stage'>) => {
+    if (!application) return;
+    try {
+      await setApplicationStage(application.id, stage);
+      toast.success(`Stage updated to ${APPLICATION_STAGE_LABELS[stage]}`);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update stage');
+    }
+  };
+
+  const handleSaveDetails = async () => {
+    if (!application) return;
+    setSaving(true);
+    try {
+      await updateApplication(application.id, {
+        notes: notes.trim() || null,
+        cover_letter: coverLetter.trim() || null,
+        follow_up_date: followUp || null,
+      });
+      toast.success('Application saved');
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (isLoading) {
     return <LoadingState label="Loading application…" />;
@@ -199,13 +270,8 @@ export default function ApplicationDetailPage() {
     );
   }
 
-  const mockNotesText =
-    application.notes ??
-    'No notes yet. Add details about this application, interview prep, or follow-up reminders here.';
-
   return (
     <div className="space-y-6">
-      {/* Back Button */}
       <Button variant="ghost" size="sm" asChild className="-ml-2">
         <Link to={ROUTES.applications}>
           <ArrowLeft className="mr-1.5 h-4 w-4" />
@@ -213,59 +279,155 @@ export default function ApplicationDetailPage() {
         </Link>
       </Button>
 
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">
-            {application.company}
+            {job?.company_name_snapshot ?? 'Application'}
           </h1>
           <p className="text-lg text-muted-foreground">
-            {application.position}
+            {job?.job_title ?? 'Linked job'}
           </p>
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <Badge
-              className={`text-sm px-3 py-1 ${getStageBadgeClass(application.stage)}`}
+              className={`px-3 py-1 text-sm ${getStageBadgeClass(application.stage)}`}
             >
               {APPLICATION_STAGE_LABELS[application.stage]}
             </Badge>
             <span className="flex items-center gap-1 text-sm text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" />
-              Applied {format(new Date(application.appliedAt), 'MMM d, yyyy')}
+              Applied{' '}
+              {format(new Date(application.application_date), 'MMM d, yyyy')}
             </span>
+            {job && (
+              <Link
+                to={ROUTES.jobDetail(job.id)}
+                className="text-sm text-primary hover:underline"
+              >
+                View job
+              </Link>
+            )}
           </div>
+        </div>
+
+        <div className="w-full sm:w-[200px]">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">
+            Stage
+          </Label>
+          <Select
+            value={application.stage}
+            onValueChange={(v) =>
+              handleStageChange(v as Enums<'application_stage'>)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {APPLICATION_STAGES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {APPLICATION_STAGE_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       <Separator />
 
-      {/* Two-column Layout */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Timeline */}
           <ApplicationTimeline application={application} />
 
-          {/* Notes */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Notes</CardTitle>
+              <CardTitle className="text-base">Notes & materials</CardTitle>
               <CardDescription>
-                Keep track of key details and preparation notes
+                Keep notes, cover letter, and follow-up date in sync
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  className="min-h-[120px] resize-y"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes about this application..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cover">Cover letter</Label>
+                <Textarea
+                  id="cover"
+                  className="min-h-[120px] resize-y"
+                  value={coverLetter}
+                  onChange={(e) => setCoverLetter(e.target.value)}
+                  placeholder="Paste or draft your cover letter..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="followUp">Follow-up date</Label>
+                <Input
+                  id="followUp"
+                  type="date"
+                  value={followUp}
+                  onChange={(e) => setFollowUp(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleSaveDetails} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Artifacts</CardTitle>
+              <CardDescription>
+                Generated materials linked to this application
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea
-                className="min-h-[140px] resize-y"
-                defaultValue={mockNotesText}
-                placeholder="Add notes about this application..."
-              />
+              {artifactsLoading ? (
+                <LoadingState label="Loading artifacts…" className="min-h-[20vh] py-8" />
+              ) : (artifacts ?? []).length === 0 ? (
+                <EmptyState
+                  icon={FileText}
+                  title="No artifacts yet"
+                  description="Artifacts will appear here when AI generation is available."
+                  className="border-0 py-8"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {(artifacts ?? []).map((artifact) => (
+                    <div
+                      key={artifact.id}
+                      className="rounded-lg border p-3"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <Badge variant="secondary" className="capitalize">
+                          {artifact.artifact_type.replace(/_/g, ' ')}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          v{artifact.version}
+                        </span>
+                      </div>
+                      <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {artifact.content}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column */}
         <div className="space-y-6">
-          {/* Details */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Details</CardTitle>
@@ -276,85 +438,60 @@ export default function ApplicationDetailPage() {
                   <DollarSign className="h-4 w-4" />
                   Salary
                 </span>
-                <span className="text-sm font-medium">{application.salary}</span>
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Globe className="h-4 w-4" />
-                  Source
+                <span className="text-sm font-medium">
+                  {job ? formatSalary(job) : '—'}
                 </span>
-                <span className="text-sm font-medium">Job Board</span>
               </div>
-
               <Separator />
-
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="h-4 w-4" />
                   Applied
                 </span>
                 <span className="text-sm font-medium">
-                  {format(new Date(application.appliedAt), 'MMM d, yyyy')}
+                  {format(new Date(application.application_date), 'MMM d, yyyy')}
                 </span>
               </div>
-
               <Separator />
-
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   Last Updated
                 </span>
                 <span className="text-sm font-medium">
-                  {format(new Date(application.updatedAt), 'MMM d, yyyy')}
+                  {format(new Date(application.updated_at), 'MMM d, yyyy')}
                 </span>
               </div>
-
-              {application.nextStep && (
+              {application.follow_up_date && (
                 <>
                   <Separator />
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <ArrowRight className="h-4 w-4" />
-                      Next Step
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Follow-up
                     </span>
-                    <span className="text-right text-sm font-medium text-primary">
-                      {application.nextStep}
+                    <span className="text-sm font-medium">
+                      {format(
+                        new Date(application.follow_up_date),
+                        'MMM d, yyyy',
+                      )}
                     </span>
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start gap-2">
-                <Send className="h-4 w-4" />
-                Send Follow-up
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2">
-                <Sparkles className="h-4 w-4" />
-                Prepare for Next Step
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Update Status
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-2 text-destructive hover:text-destructive"
-              >
-                <XCircle className="h-4 w-4" />
-                Withdraw Application
-              </Button>
+              {application.salary_expectation != null && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Expectation
+                    </span>
+                    <span className="text-sm font-medium">
+                      {application.salary_currency}{' '}
+                      {application.salary_expectation.toLocaleString()}
+                    </span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

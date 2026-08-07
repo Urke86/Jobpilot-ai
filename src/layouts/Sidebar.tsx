@@ -9,7 +9,9 @@ import {
   Bot,
   Settings,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ROUTES } from '@/constants/routes';
 import { APP_NAME } from '@/constants';
@@ -77,31 +79,46 @@ export function AiInsightsCard() {
           <Sparkles className="h-3.5 w-3.5 text-blue-500" />
         </div>
         <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-          AI Analysis Ready
+          Data secured
         </span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        New insights available based on your recent activity.
+        Your jobs and applications sync to Supabase. AI insights arrive in a
+        later phase.
       </p>
       <NavLink
         to={ROUTES.assistant}
         className="mt-2.5 inline-block text-xs font-medium text-blue-600 transition-colors duration-150 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
       >
-        View Insights →
+        Open Assistant →
       </NavLink>
     </div>
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  onSignOut,
+}: {
+  onSignOut?: () => void | Promise<void>;
+}) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-card lg:flex">
       <BrandMark />
       <div className="flex-1 overflow-y-auto p-4">
         <SidebarNav />
       </div>
-      <div className="p-4">
+      <div className="space-y-3 p-4">
         <AiInsightsCard />
+        {onSignOut ? (
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-2"
+            onClick={() => void onSignOut()}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        ) : null}
       </div>
     </aside>
   );

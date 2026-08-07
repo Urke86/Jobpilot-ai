@@ -1,43 +1,72 @@
+/**
+ * Application data layer.
+ * Pages import from here — never call supabase.from() directly.
+ */
 export {
   listJobs,
   getJobById,
-  listApplications,
-  getApplicationById,
+  listJobsByCompany,
+  createJob,
+  updateJob,
+  setJobStatus,
+  deleteJob,
+  formatSalary,
+  type CreateJobInput,
+} from './app/jobs';
+
+export {
   listCompanies,
   getCompanyById,
-  getJobsByCompanyName,
-  listActivities,
-  getDashboardStats,
-  getJobsBySourceChart,
-  getApplicationsByStatusChart,
-} from './mock/ui-adapters';
+  findCompanyByName,
+  createCompany,
+  updateCompany,
+  deleteCompany,
+} from './app/companies';
 
-export type {
-  Profile,
-  ProfileInsert,
-  ProfileUpdate,
-  CompanyRecord,
-  CompanyInsert,
-  CompanyUpdate,
-  Contact,
-  ContactInsert,
-  ContactUpdate,
-  JobRecord,
-  JobInsert,
-  JobUpdate,
-  JobAnalysis,
-  JobAnalysisInsert,
-  ApplicationRecord,
-  ApplicationInsert,
-  ApplicationUpdate,
-  ApplicationArtifact,
-  ActivityRecord,
-  ProfilesRepository,
-  CompaniesRepository,
-  ContactsRepository,
-  JobsRepository,
-  JobAnalysisRepository,
-  ApplicationsRepository,
-  ApplicationArtifactsRepository,
-  ActivitiesRepository,
-} from './contracts';
+export {
+  listContactsByCompany,
+  createContact,
+  updateContact,
+  deleteContact,
+} from './app/contacts';
+
+export {
+  listApplications,
+  getApplicationById,
+  getApplicationByJobId,
+  createApplication,
+  updateApplication,
+  setApplicationStage,
+  deleteApplication,
+  type CreateApplicationInput,
+} from './app/applications';
+
+export {
+  listActivities,
+  logActivity,
+} from './app/activities';
+
+export {
+  getCurrentProfile,
+  updateCurrentProfile,
+} from './app/profiles';
+
+export {
+  getLatestJobAnalysis,
+  listJobAnalyses,
+  createManualJobAnalysis,
+} from './app/job-analysis';
+
+export {
+  listArtifactsByApplication,
+  createArtifact,
+} from './app/artifacts';
+
+export {
+  getDashboardData,
+  type DashboardData,
+  type DashboardStats,
+} from './app/dashboard';
+
+export type * from './contracts';
+export * as auth from './auth';

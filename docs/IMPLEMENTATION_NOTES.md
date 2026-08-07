@@ -1,51 +1,43 @@
-# Implementation notes — Architecture phase
+# Implementation notes
 
-## What changed
+## Phase 1–2
 
-1. **Routing bugfixes** — Sidebar now uses `/dashboard` and `/assistant` (previously `/` and `/ai-assistant`, which broke active states and AI navigation).
-2. **Shared domain utils** — Status, recommendation, score, and company-color helpers extracted from pages into `src/utils`.
-3. **Constants** — `ROUTES`, job/application status labels centralized.
-4. **Services layer** — Async read API over mock data; swap target without rewriting pages.
-5. **Supabase readiness** — `lib/supabase/client.ts` + `.env.example`; no schema yet.
-6. **Providers** — `ThemeProvider` + `ErrorBoundary` + Router in `AppProviders`.
-7. **Resilience UI** — Error boundaries, loading/empty/skeleton components.
-8. **Tooling** — Prettier, ESLint+Prettier, stricter unused checks, package rename to `jobpilot-ai`.
-9. **Cleanup** — Removed empty `App.css`, Bolt OG tags, `lucide-react` optimizeDeps exclusion.
+See earlier notes for architecture foundation and database schema.
 
-## Known limitations (intentional)
+## Phase 3 — Auth & CRUD
 
-- Mock data still powers the UI; dashboard aggregate numbers do not match the 12 sample jobs.
-- AI Assistant and Job Detail AI panels use canned/hardcoded content.
-- Header search and notifications are non-functional chrome.
-- Many shadcn UI packages remain unused (scaffold inventory).
-- `Job.company` is a string, not `companyId` — join-by-name until schema exists.
-- Dual visual systems for job status (list solid badges vs dashboard soft badges) preserved on purpose.
+### What shipped
 
-## Improvement suggestions (next phases)
+- Email/password auth with session persistence and protected routes
+- Profile ensure-on-signup (no overwrite) + Settings profile persistence
+- Real CRUD for companies, contacts, jobs, applications
+- Dashboard aggregates from live user data
+- Activity logging for meaningful actions
+- Job analysis UI reads `job_analysis` (empty state until Phase 4 AI)
+- Application artifacts list (empty until content exists / Phase 4)
 
-### Phase 2 — Supabase foundation
-1. Add `.env.local` with project URL + anon key.
-2. Design schema: `profiles`, `jobs`, `companies`, `applications`, `activities`.
-3. Migrations + RLS; generate TypeScript types into `src/types/database.ts`.
-4. Replace mock implementations inside `src/services` only.
+### Ownership
 
-### Phase 3 — Auth & persistence
-1. Supabase Auth (email/OAuth).
-2. Persist Settings preferences per user.
-3. Real CRUD for jobs/applications.
+All inserts set `user_id` from `auth.getUser()` in services. RLS remains the enforcement layer.
 
-### Phase 4 — AI & automation
-1. OpenAI for analysis, CV, cover letters, interview prep.
-2. n8n for job discovery / enrichment pipelines.
-3. Replace canned Assistant responses with streaming chat.
+### Mock data
 
-### Engineering hygiene
-1. Add Vitest + React Testing Library for services and critical pages.
-2. Introduce feature folders (`features/jobs`, …) if pages grow further.
-3. Prune unused shadcn components/deps when the feature set stabilizes.
-4. Add `companyId` FK and unify status enums across Job vs Application.
-5. Wire global command palette (⌘K) and notifications.
+`src/data/mock.ts` and `src/services/mock/ui-adapters.ts` are **not imported by pages**. Kept only as historical fixtures.
 
-## Do not proceed without approval
+### Auth config note
 
-Stop here until product/engineering sign-off for Phase 2 (database).
+Project auth `mailer_autoconfirm` was enabled for MVP local testing. Revisit before production launch.
+
+### Validation
+
+- `npm run lint` — pass
+- `npm run typecheck` — pass
+- `npm run build` — pass
+
+### Phase 4 recommendations
+
+1. OpenAI job analysis + artifact generation behind the existing services
+2. Streaming assistant replacing canned chat
+3. Optional n8n ingestion writing into `jobs` via service role (server-side only)
+4. Harden email confirmation / password reset flows
+5. Add Vitest coverage for auth + ownership helpers
