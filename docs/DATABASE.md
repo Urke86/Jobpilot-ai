@@ -56,8 +56,10 @@ auth.users 1──* activities      (polymorphic entity_id, no FK)
 - **applications** — `UNIQUE (user_id, job_id)` (one application per job)
 - **job_analysis** scores — `CHECK` 0–100; strengths/gaps/risks must be JSON arrays
 - **job_analysis.metadata** — jsonb object for model/tokens/cost/cv_focus/interview_focus (Phase 4A)
+- **jobs.ingestion_metadata** — jsonb provenance for n8n / webhook / manual import (Phase 4C.2)
 - **job_analysis (job_id, created_at DESC)** — latest analysis lookup
 - **companies (user_id, lower(trim(name)))** — normalized name search (not globally unique)
+- **jobs (user_id, lower(trim(job_title)), lower(trim(company_name_snapshot)))** — soft dedupe support
 - Salary range check on jobs: `salary_max >= salary_min` when both set
 
 ## RLS ownership model
@@ -136,8 +138,8 @@ RLS remains the authority for isolation.
 
 Profiles are created on signup via select-then-insert (`ensureProfile`) — existing rows are never overwritten.
 
-## Future notes (Phase 4+)
+## Future notes
 
-1. OpenAI-backed `job_analysis` (Phase 4A) and later `application_artifacts` generation.
-2. Optional server-side n8n writers (service role never in the browser).
-3. Optional Storage buckets for CV uploads.
+1. Additional n8n source adapters (public RSS/APIs only).
+2. Optional Storage buckets for CV uploads.
+3. Gmail / Calendar / RAG only with explicit phase approval.

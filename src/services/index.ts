@@ -75,6 +75,16 @@ export {
 } from './app/artifacts';
 
 export {
+  ingestJobs,
+  ingestSingleJob,
+  listRecentlyIngestedJobs,
+  getIngestionMeta,
+  type IngestJobPayload,
+  type IngestResult,
+  type IngestResponse,
+} from './app/ingestion';
+
+export {
   listConversations,
   getConversation,
   createConversation,

@@ -1,0 +1,134 @@
+{
+  "name": "JobPilot — Optional Auto Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jobpilot-auto-analyze",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-analyze",
+      "name": "Created Job Hook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "jobpilot-auto-analyze"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst enabled = String($env.JOBPILOT_AUTO_ANALYZE ?? 'false').toLowerCase();\nconst auto = enabled === 'true' || enabled === '1' || body.auto_analyze === true;\nconst jobId = body.job_id ?? body.jobId;\nconst status = body.status;\nif (!auto) {\n  return [{ json: { skipped: true, reason: 'AUTO_ANALYZE disabled' } }];\n}\nif (status && status !== 'created') {\n  return [{ json: { skipped: true, reason: 'Only created jobs are analyzed' } }];\n}\nif (!jobId) {\n  return [{ json: { skipped: true, reason: 'Missing job_id' } }];\n}\nreturn [{ json: { jobId, target_user_id: $env.JOBPILOT_TARGET_USER_ID, run: true } }];"
+      },
+      "id": "gate-analyze",
+      "name": "AUTO_ANALYZE Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.run === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-run",
+      "name": "Should Analyze?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JOBPILOT_SUPABASE_URL }}/functions/v1/analyze-job",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "x-jobpilot-ingest-secret",
+              "value": "={{ $env.JOBPILOT_INGEST_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"jobId\": \"{{ $json.jobId }}\",\n  \"target_user_id\": \"{{ $json.target_user_id }}\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "http-analyze",
+      "name": "Analyze Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, -80],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-analyzed",
+      "name": "Respond Analyzed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1020, -80]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-skipped",
+      "name": "Respond Skipped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [760, 120]
+    }
+  ],
+  "connections": {
+    "Created Job Hook": {
+      "main": [[{ "node": "AUTO_ANALYZE Gate", "type": "main", "index": 0 }]]
+    },
+    "AUTO_ANALYZE Gate": {
+      "main": [[{ "node": "Should Analyze?", "type": "main", "index": 0 }]]
+    },
+    "Should Analyze?": {
+      "main": [
+        [{ "node": "Analyze Job", "type": "main", "index": 0 }],
+        [{ "node": "Respond Skipped", "type": "main", "index": 0 }]
+      ]
+    },
+    "Analyze Job": {
+      "main": [[{ "node": "Respond Analyzed", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "jobpilot": {
+      "workflow": "auto-analysis",
+      "phase": "4C.2",
+      "notes": "Default off via JOBPILOT_AUTO_ANALYZE. Prefer ingest-job auto_analyze=false and call this only for created jobs with long descriptions."
+    }
+  }
+}

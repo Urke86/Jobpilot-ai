@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const SignupPage = lazy(() => import('@/pages/SignupPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const JobsPage = lazy(() => import('@/pages/JobsPage'));
+const JobImportPage = lazy(() => import('@/pages/JobImportPage'));
 const JobDetailPage = lazy(() => import('@/pages/JobDetailPage'));
 const ApplicationsPage = lazy(() => import('@/pages/ApplicationsPage'));
 const ApplicationDetailPage = lazy(() => import('@/pages/ApplicationDetailPage'));
@@ -61,6 +62,16 @@ export default function App() {
               <RouteSuspense>
                 <ErrorBoundary fallbackTitle="Jobs failed to load">
                   <JobsPage />
+                </ErrorBoundary>
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path={ROUTES.jobsImport}
+            element={
+              <RouteSuspense>
+                <ErrorBoundary fallbackTitle="Import jobs failed to load">
+                  <JobImportPage />
                 </ErrorBoundary>
               </RouteSuspense>
             }

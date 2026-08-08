@@ -93,3 +93,28 @@ Not in 4C.1: n8n, scraping, Gmail/Calendar, RAG, embeddings, agents.
 4. Global AI spend dashboards
 5. Vitest for assistant streaming client + ownership helpers
 6. Harden email confirmation / password reset
+
+## Phase 4C.2 — n8n Job Ingestion
+
+### What shipped
+
+- `jobs.ingestion_metadata` jsonb + indexes
+- Edge Function `ingest-job` (JWT or `INGESTION_SECRET` + `target_user_id`)
+- Normalize / validate / URL+title dedupe / company match / activity log
+- Optional `auto_analyze` → `analyze-job` (automation auth extended)
+- Import Jobs UI at `/jobs/import`
+- n8n exports in `automation/n8n/`
+- Docs: `docs/N8N_AUTOMATION.md`
+
+### Boundaries (explicit)
+
+Not in 4C.2: LinkedIn/Indeed scraping, browser automation, Gmail/Calendar, RAG, embeddings, agents.
+
+### Next phase recommendations
+
+1. Additional public RSS/API source adapters in n8n
+2. Conversation summarization for long assistant threads
+3. Gmail / Calendar integrations (explicit approval)
+4. Global AI spend dashboards
+5. Vitest for ingest normalize/dedupe helpers
+6. Harden email confirmation / password reset

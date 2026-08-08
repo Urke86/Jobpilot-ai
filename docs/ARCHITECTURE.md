@@ -12,7 +12,7 @@ JobPilot AI helps users discover jobs, track applications, manage companies/cont
 | Routing | React Router 7 |
 | Backend | Supabase Auth + PostgreSQL (RLS) |
 | AI | OpenAI via Edge Functions `analyze-job`, `generate-artifact`, `chat-assistant` |
-| Automation (planned) | n8n |
+| Automation | n8n → Edge Function `ingest-job` (secret + target user) |
 
 ## Directory highlights
 
@@ -32,6 +32,8 @@ supabase/functions/
   analyze-job/         Server-side OpenAI job analysis
   generate-artifact/   Server-side application artifact generation
   chat-assistant/      Streaming contextual AI assistant
+  ingest-job/          n8n / manual job ingestion + dedupe
+automation/n8n/        Exported n8n workflow JSON (no secrets)
 ```
 
 ## Data flow
@@ -41,9 +43,10 @@ Page → @/services/app → requireUserId + Supabase client → Postgres (RLS)
 Job Detail Analyze → requestJobAnalysis → analyze-job → job_analysis insert
 Application Detail Toolkit → requestArtifactGeneration → generate-artifact → application_artifacts insert
 Assistant → streamAssistantMessage → chat-assistant (SSE) → ai_messages insert
+n8n / Import UI → ingest-job → jobs + companies + activities (+ optional analyze-job)
 ```
 
-See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), and [AI_ARTIFACTS.md](./AI_ARTIFACTS.md).
+See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), [AI_ARTIFACTS.md](./AI_ARTIFACTS.md), [AI_ASSISTANT.md](./AI_ASSISTANT.md), and [N8N_AUTOMATION.md](./N8N_AUTOMATION.md).
 
 ## Phase status
 
@@ -55,7 +58,8 @@ See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.m
 | 4A AI job analysis | Done |
 | 4B Application artifacts | Done |
 | 4C.1 Streaming assistant | Done |
-| 4C.2+ n8n / scraping / integrations | Not started |
+| 4C.2 n8n job ingestion | Done |
+| 4C.3+ Gmail / Calendar / RAG / agents | Not started |
 
 ## Environment
 
@@ -70,4 +74,6 @@ Edge secrets (Dashboard → Edge Functions → Secrets, or CLI):
 
 - `OPENAI_API_KEY`
 - optional `OPENAI_ANALYSIS_MODEL` (default `gpt-4o-mini`)
-
+- `INGESTION_SECRET` (n8n ↔ ingest-job / analyze-job automation)
+- optional `INGESTION_ALLOWED_USER_IDS`
+- optional `AUTO_ANALYZE_INGESTED_JOBS` (default false)

@@ -435,3 +435,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/chat-assistant/deno.json"
 entrypoint = "./functions/chat-assistant/index.ts"
+
+[functions.ingest-job]
+enabled = true
+verify_jwt = true
+import_map = "./functions/ingest-job/deno.json"
+entrypoint = "./functions/ingest-job/index.ts"

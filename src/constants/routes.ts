@@ -8,6 +8,7 @@ export const ROUTES = {
   signup: '/signup',
   dashboard: '/dashboard',
   jobs: '/jobs',
+  jobsImport: '/jobs/import',
   jobDetail: (id: string) => `/jobs/${id}` as const,
   applications: '/applications',
   applicationDetail: (id: string) => `/applications/${id}` as const,

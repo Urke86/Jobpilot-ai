@@ -1,0 +1,135 @@
+{
+  "name": "JobPilot — Scheduled Public Feed Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+        }
+      },
+      "id": "schedule-feed",
+      "name": "Every 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://remotive.com/api/remote-jobs?category=software-dev&limit=10",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-remotive",
+      "name": "Fetch Remotive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $input.first().json.jobs ?? [];\nconst out = [];\nfor (const j of jobs) {\n  const title = String(j.title ?? '').trim();\n  const company = String(j.company_name ?? '').trim();\n  if (!title || !company) {\n    out.push({ json: { __reject: true, reason: 'missing fields', external_id: j.id } });\n    continue;\n  }\n  out.push({\n    json: {\n      job_title: title,\n      company_name: company,\n      source: 'remotive',\n      job_url: j.url ?? null,\n      location: j.candidate_required_location ?? null,\n      remote_scope: 'remote_global',\n      employment_type: String(j.job_type ?? '').toLowerCase().includes('full') ? 'full_time' : 'unknown',\n      job_description: j.description ?? null,\n      external_id: j.id != null ? String(j.id) : null,\n      ingestion_metadata: {\n        workflow: 'scheduled-ingestion',\n        feed: 'remotive-software-dev'\n      }\n    }\n  });\n}\nreturn out;"
+      },
+      "id": "normalize-feed",
+      "name": "Normalize Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.__reject }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "valid-feed",
+      "name": "Valid Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [740, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JOBPILOT_SUPABASE_URL }}/functions/v1/ingest-job",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "x-jobpilot-ingest-secret",
+              "value": "={{ $env.JOBPILOT_INGEST_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"target_user_id\": \"{{ $env.JOBPILOT_TARGET_USER_ID }}\",\n  \"workflow\": \"scheduled-ingestion\",\n  \"auto_analyze\": false,\n  \"job\": {{ JSON.stringify($json) }}\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http-ingest-feed",
+      "name": "Ingest Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, -60],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 4000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Placeholder for rejected / malformed feed items — continue batch\nreturn [{ json: { status: 'rejected', reason: $json.reason || 'malformed' } }];"
+      },
+      "id": "skip-bad",
+      "name": "Skip Bad Item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 140]
+    }
+  ],
+  "connections": {
+    "Every 6h": {
+      "main": [[{ "node": "Fetch Remotive", "type": "main", "index": 0 }]]
+    },
+    "Fetch Remotive": {
+      "main": [[{ "node": "Normalize Loop", "type": "main", "index": 0 }]]
+    },
+    "Normalize Loop": {
+      "main": [[{ "node": "Valid Item?", "type": "main", "index": 0 }]]
+    },
+    "Valid Item?": {
+      "main": [
+        [{ "node": "Ingest Job", "type": "main", "index": 0 }],
+        [{ "node": "Skip Bad Item", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "jobpilot": {
+      "workflow": "scheduled-ingestion",
+      "phase": "4C.2",
+      "notes": "Uses Remotive public API as a safe MVP source. continueOnFail keeps the batch alive."
+    }
+  }
+}

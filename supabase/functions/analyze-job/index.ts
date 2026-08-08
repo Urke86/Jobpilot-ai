@@ -169,7 +169,7 @@ const jsonSchema = {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
+    'authorization, x-client-info, apikey, content-type, x-jobpilot-ingest-secret',
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -261,32 +261,87 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const ingestSecret = Deno.env.get('INGESTION_SECRET')?.trim() ?? '';
     if (!supabaseUrl || !supabaseAnonKey) {
       return jsonResponse({ error: 'Supabase environment is incomplete.' }, 500);
-    }
-
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return jsonResponse({ error: 'Authentication required.' }, 401);
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return jsonResponse({ error: 'Authentication required.' }, 401);
     }
 
     const body = await req.json().catch(() => null);
     const jobId = typeof body?.jobId === 'string' ? body.jobId : null;
     if (!jobId) {
       return jsonResponse({ error: 'jobId is required.' }, 400);
+    }
+
+    const providedSecret =
+      req.headers.get('x-jobpilot-ingest-secret')?.trim() ?? '';
+    let automationAuth = false;
+    if (ingestSecret && providedSecret && providedSecret.length === ingestSecret.length) {
+      let mismatch = 0;
+      for (let i = 0; i < ingestSecret.length; i++) {
+        mismatch |= ingestSecret.charCodeAt(i) ^ providedSecret.charCodeAt(i);
+      }
+      automationAuth = mismatch === 0;
+    }
+
+    let supabase;
+    let actingUserId: string;
+
+    if (automationAuth) {
+      if (!serviceRoleKey) {
+        return jsonResponse(
+          { error: 'Service role is not configured for automation analysis.' },
+          500,
+        );
+      }
+      const target =
+        typeof body?.target_user_id === 'string'
+          ? body.target_user_id.trim()
+          : '';
+      if (!target) {
+        return jsonResponse(
+          {
+            error:
+              'target_user_id is required when using the ingestion secret.',
+          },
+          400,
+        );
+      }
+      const allowRaw = Deno.env.get('INGESTION_ALLOWED_USER_IDS')?.trim();
+      if (allowRaw) {
+        const allowed = new Set(
+          allowRaw.split(',').map((s) => s.trim()).filter(Boolean),
+        );
+        if (!allowed.has(target)) {
+          return jsonResponse(
+            { error: 'target_user_id is not allowlisted for automation.' },
+            403,
+          );
+        }
+      }
+      actingUserId = target;
+      supabase = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    } else {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        return jsonResponse({ error: 'Authentication required.' }, 401);
+      }
+
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        return jsonResponse({ error: 'Authentication required.' }, 401);
+      }
+      actingUserId = user.id;
     }
 
     const { data: job, error: jobError } = await supabase
@@ -302,7 +357,7 @@ Deno.serve(async (req) => {
     if (!job) {
       return jsonResponse({ error: 'Job not found.' }, 404);
     }
-    if (job.user_id !== user.id) {
+    if (job.user_id !== actingUserId) {
       return jsonResponse({ error: 'You do not have access to this job.' }, 403);
     }
 
@@ -340,7 +395,7 @@ Deno.serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', actingUserId)
       .maybeSingle();
 
     if (profileError) {
@@ -468,7 +523,7 @@ Deno.serve(async (req) => {
     };
 
     const insertPayload = {
-      user_id: user.id,
+      user_id: actingUserId,
       job_id: jobId,
       overall_match_score: result.overall_match_score,
       product_fit_score: result.product_fit_score,
@@ -516,7 +571,7 @@ Deno.serve(async (req) => {
     await supabase.from('jobs').update({ status: 'reviewed' }).eq('id', jobId);
 
     await supabase.from('activities').insert({
-      user_id: user.id,
+      user_id: actingUserId,
       entity_type: 'job_analysis',
       entity_id: inserted.id,
       activity_type: 'analysis_completed',

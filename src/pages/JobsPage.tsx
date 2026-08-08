@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, Plus, Search } from 'lucide-react';
+import { Briefcase, Plus, Search, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { JobFormDialog } from '@/components/jobs/JobFormDialog';
 import { EmptyState, LoadingState } from '@/components/common';
@@ -121,6 +121,14 @@ export default function JobsPage() {
           <Badge variant="secondary" className="px-3 py-1 text-sm">
             {filteredJobs.length} / {allJobs.length} jobs
           </Badge>
+          <Button
+            variant="outline"
+            onClick={() => navigate(ROUTES.jobsImport)}
+            className="gap-1.5"
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </Button>
           <Button onClick={() => setDialogOpen(true)} className="gap-1.5">
             <Plus className="h-4 w-4" />
             Add Job

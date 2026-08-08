@@ -417,6 +417,7 @@ export type Database = {
           deadline: string | null
           employment_type: Database["public"]["Enums"]["employment_type"]
           id: string
+          ingestion_metadata: Json
           job_description: string | null
           job_title: string
           job_url: string | null
@@ -438,6 +439,7 @@ export type Database = {
           deadline?: string | null
           employment_type?: Database["public"]["Enums"]["employment_type"]
           id?: string
+          ingestion_metadata?: Json
           job_description?: string | null
           job_title: string
           job_url?: string | null
@@ -459,6 +461,7 @@ export type Database = {
           deadline?: string | null
           employment_type?: Database["public"]["Enums"]["employment_type"]
           id?: string
+          ingestion_metadata?: Json
           job_description?: string | null
           job_title?: string
           job_url?: string | null

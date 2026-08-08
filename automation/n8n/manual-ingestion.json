@@ -1,0 +1,145 @@
+{
+  "name": "JobPilot — Manual / Test Webhook Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jobpilot-ingest",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-manual",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "jobpilot-manual-ingest"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst job = body.job ?? body;\nconst title = String(job.job_title ?? job.title ?? '').trim();\nconst company = String(job.company_name ?? job.company ?? '').trim();\nconst source = String(job.source ?? 'webhook').trim() || 'webhook';\nif (!title || !company) {\n  return [{ json: { __reject: true, reason: 'Missing job_title or company_name', raw: job } }];\n}\nreturn [{\n  json: {\n    job_title: title,\n    company_name: company,\n    source,\n    job_url: job.job_url ?? job.url ?? null,\n    location: job.location ?? null,\n    remote_scope: job.remote_scope ?? null,\n    employment_type: job.employment_type ?? null,\n    salary_min: job.salary_min ?? null,\n    salary_max: job.salary_max ?? null,\n    salary_currency: job.salary_currency ?? null,\n    job_description: job.job_description ?? job.description ?? null,\n    date_discovered: job.date_discovered ?? null,\n    deadline: job.deadline ?? null,\n    external_id: job.external_id ?? null,\n    ingestion_metadata: {\n      workflow: 'manual-ingestion',\n      received_via: 'n8n-webhook'\n    }\n  }\n}];"
+      },
+      "id": "normalize-manual",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.__reject }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "validate-manual",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JOBPILOT_SUPABASE_URL }}/functions/v1/ingest-job",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.JOBPILOT_ANON_KEY }}"
+            },
+            {
+              "name": "x-jobpilot-ingest-secret",
+              "value": "={{ $env.JOBPILOT_INGEST_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"target_user_id\": \"{{ $env.JOBPILOT_TARGET_USER_ID }}\",\n  \"workflow\": \"manual-ingestion\",\n  \"auto_analyze\": false,\n  \"job\": {{ JSON.stringify($json) }}\n}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "id": "http-ingest-manual",
+      "name": "Ingest Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, -80],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1020, -80]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'rejected', reason: $json.reason || 'invalid' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-bad",
+      "name": "Respond Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [760, 120]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]]
+    },
+    "Normalize": {
+      "main": [[{ "node": "Valid?", "type": "main", "index": 0 }]]
+    },
+    "Valid?": {
+      "main": [
+        [{ "node": "Ingest Job", "type": "main", "index": 0 }],
+        [{ "node": "Respond Rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ingest Job": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "jobpilot": {
+      "workflow": "manual-ingestion",
+      "phase": "4C.2"
+    }
+  }
+}
