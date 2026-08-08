@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ArtifactToolkit } from '@/components/artifacts/ArtifactToolkit';
 import { EmptyState, LoadingState } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,8 +41,14 @@ import {
 } from '@/constants/status';
 import { useResource } from '@/hooks/use-resource';
 import {
+  ARTIFACT_TYPE_LABELS,
+  artifactPreviewText,
+  type ArtifactType,
+} from '@/lib/ai/artifact-schemas';
+import {
   formatSalary,
   getApplicationById,
+  getArtifactMetadata,
   getJobById,
   listArtifactsByApplication,
   setApplicationStage,
@@ -213,7 +220,11 @@ export default function ApplicationDetailPage() {
     [application?.job_id],
   );
 
-  const { data: artifacts, isLoading: artifactsLoading } = useResource(
+  const {
+    data: artifacts,
+    isLoading: artifactsLoading,
+    refetch: refetchArtifacts,
+  } = useResource(
     () => (id ? listArtifactsByApplication(id) : Promise.resolve([])),
     [id],
   );
@@ -339,6 +350,12 @@ export default function ApplicationDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           <ApplicationTimeline application={application} />
 
+          <ArtifactToolkit
+            applicationId={application.id}
+            artifacts={artifacts ?? []}
+            onChanged={refetchArtifacts}
+          />
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Notes & materials</CardTitle>
@@ -386,41 +403,53 @@ export default function ApplicationDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Artifacts</CardTitle>
+              <CardTitle className="text-base">Saved artifacts</CardTitle>
               <CardDescription>
-                Generated materials linked to this application
+                Version history across all generated materials
               </CardDescription>
             </CardHeader>
             <CardContent>
               {artifactsLoading ? (
-                <LoadingState label="Loading artifacts…" className="min-h-[20vh] py-8" />
+                <LoadingState
+                  label="Loading artifacts…"
+                  className="min-h-[20vh] py-8"
+                />
               ) : (artifacts ?? []).length === 0 ? (
                 <EmptyState
                   icon={FileText}
                   title="No artifacts yet"
-                  description="Artifacts will appear here when AI generation is available."
+                  description="Use the AI Application Toolkit above to generate materials."
                   className="border-0 py-8"
                 />
               ) : (
                 <div className="space-y-3">
-                  {(artifacts ?? []).map((artifact) => (
-                    <div
-                      key={artifact.id}
-                      className="rounded-lg border p-3"
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <Badge variant="secondary" className="capitalize">
-                          {artifact.artifact_type.replace(/_/g, ' ')}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          v{artifact.version}
-                        </span>
+                  {(artifacts ?? []).map((artifact) => {
+                    const label =
+                      ARTIFACT_TYPE_LABELS[
+                        artifact.artifact_type as ArtifactType
+                      ] ?? artifact.artifact_type.replace(/_/g, ' ');
+                    const preview = artifactPreviewText(
+                      artifact.artifact_type,
+                      artifact.content,
+                      getArtifactMetadata(artifact),
+                    );
+                    return (
+                      <div
+                        key={artifact.id}
+                        className="rounded-lg border p-3"
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <Badge variant="secondary">{label}</Badge>
+                          <span className="text-xs text-muted-foreground">
+                            v{artifact.version}
+                          </span>
+                        </div>
+                        <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {preview}
+                        </p>
                       </div>
-                      <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted-foreground">
-                        {artifact.content}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "db:types": "supabase gen types typescript --project-id xzzoznhmezmaarcvavpr --schema public > src/types/database.ts",
-    "db:push": "supabase db push --linked"
+    "db:push": "supabase db push --linked",
+    "supabase": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/supabase.ps1",
+    "supabase:login": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/supabase-login.ps1"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

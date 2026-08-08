@@ -54,13 +54,40 @@ export {
 export {
   getLatestJobAnalysis,
   listJobAnalyses,
-  createManualJobAnalysis,
+  requestJobAnalysis,
+  parseAnalysisStrengths,
+  parseAnalysisGaps,
+  parseAnalysisRisks,
+  getAnalysisMetadata,
+  type AnalyzeJobResponse,
 } from './app/job-analysis';
 
 export {
   listArtifactsByApplication,
+  listArtifactsByType,
+  getLatestArtifactByType,
   createArtifact,
+  updateArtifactContent,
+  requestArtifactGeneration,
+  getArtifactMetadata,
+  type GenerateArtifactInput,
+  type GenerateArtifactResponse,
 } from './app/artifacts';
+
+export {
+  listConversations,
+  getConversation,
+  createConversation,
+  updateConversation,
+  deleteConversation,
+  listMessages,
+  streamAssistantMessage,
+  type AiConversation,
+  type AiMessage,
+  type AssistantContextType,
+  type CreateConversationInput,
+  type StreamChatHandlers,
+} from './app/assistant';
 
 export {
   getDashboardData,

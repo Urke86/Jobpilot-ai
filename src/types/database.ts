@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -49,6 +49,92 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      ai_conversations: {
+        Row: {
+          context_application_id: string | null
+          context_job_id: string | null
+          context_type: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context_application_id?: string | null
+          context_job_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          context_application_id?: string | null
+          context_job_id?: string | null
+          context_type?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_context_application_id_fkey"
+            columns: ["context_application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_context_job_id_fkey"
+            columns: ["context_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          role: Database["public"]["Enums"]["ai_message_role"]
+          user_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          role: Database["public"]["Enums"]["ai_message_role"]
+          user_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          role?: Database["public"]["Enums"]["ai_message_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       application_artifacts: {
         Row: {
@@ -260,6 +346,7 @@ export type Database = {
           gaps: Json
           id: string
           job_id: string
+          metadata: Json
           overall_match_score: number
           product_fit_score: number | null
           reasoning_summary: string | null
@@ -279,6 +366,7 @@ export type Database = {
           gaps?: Json
           id?: string
           job_id: string
+          metadata?: Json
           overall_match_score: number
           product_fit_score?: number | null
           reasoning_summary?: string | null
@@ -298,6 +386,7 @@ export type Database = {
           gaps?: Json
           id?: string
           job_id?: string
+          metadata?: Json
           overall_match_score?: number
           product_fit_score?: number | null
           reasoning_summary?: string | null
@@ -458,6 +547,7 @@ export type Database = {
         | "application"
         | "application_artifact"
         | "system"
+        | "ai_conversation"
       activity_type:
         | "job_discovered"
         | "job_status_changed"
@@ -469,6 +559,8 @@ export type Database = {
         | "contact_added"
         | "note_added"
         | "custom"
+        | "assistant_started"
+      ai_message_role: "user" | "assistant" | "system"
       analysis_recommendation: "apply" | "consider" | "skip"
       application_stage:
         | "preparing"
@@ -650,6 +742,7 @@ export const Constants = {
         "application",
         "application_artifact",
         "system",
+        "ai_conversation",
       ],
       activity_type: [
         "job_discovered",
@@ -662,7 +755,9 @@ export const Constants = {
         "contact_added",
         "note_added",
         "custom",
+        "assistant_started",
       ],
+      ai_message_role: ["user", "assistant", "system"],
       analysis_recommendation: ["apply", "consider", "skip"],
       application_stage: [
         "preparing",

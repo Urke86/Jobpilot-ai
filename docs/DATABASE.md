@@ -13,6 +13,8 @@ Phase 2 schema for multi-user job search and application tracking.
 | `job_analysis` | Versioned AI analysis snapshots |
 | `applications` | Application pipeline records |
 | `application_artifacts` | CV/cover letter/Q&A materials |
+| `ai_conversations` | Assistant chat threads (Phase 4C.1) |
+| `ai_messages` | Assistant messages + AI run metadata |
 | `activities` | Dashboard feed / audit trail |
 
 All tables use UUID PKs, `timestamptz` timestamps, and `user_id → auth.users(id)` ownership.
@@ -26,6 +28,7 @@ auth.users 1──* jobs *──1 companies (optional)
 jobs 1──* job_analysis
 jobs 1──1 applications          (UNIQUE user_id + job_id)
 applications 1──* application_artifacts
+auth.users 1──* ai_conversations 1──* ai_messages
 auth.users 1──* activities      (polymorphic entity_id, no FK)
 ```
 
@@ -37,7 +40,10 @@ auth.users 1──* activities      (polymorphic entity_id, no FK)
 | `remote_scope` | onsite, hybrid, remote_country, remote_europe, remote_emea, remote_global, unknown |
 | `employment_type` | full_time, part_time, contract, temporary, internship, unknown |
 | `job_status` | new, analyzing, reviewed, shortlisted, skipped, applied, archived |
-| `analysis_recommendation` | apply, consider, skip |
+| `activity_type` | …, artifact_created, assistant_started, custom |
+| `activity_entity_type` | …, application_artifact, ai_conversation, system |
+| `ai_message_role` | user, assistant, system |
+| `artifact_type` | cv_recommendations, cv_summary, cover_letter, questionnaire_answer, linkedin_message, follow_up, interview_questions, interview_answers, company_research, custom |
 | `application_stage` | preparing, applied, questionnaire, interview, assignment, offer, rejected, withdrawn |
 | `artifact_type` | cv_recommendations, cv_summary, cover_letter, questionnaire_answer, linkedin_message, follow_up, interview_questions, interview_answers, company_research, custom |
 | `activity_entity_type` | profile, company, contact, job, job_analysis, application, application_artifact, system |
@@ -49,6 +55,7 @@ auth.users 1──* activities      (polymorphic entity_id, no FK)
 - **jobs** — partial unique index on `(user_id, job_url)` where `job_url is not null`
 - **applications** — `UNIQUE (user_id, job_id)` (one application per job)
 - **job_analysis** scores — `CHECK` 0–100; strengths/gaps/risks must be JSON arrays
+- **job_analysis.metadata** — jsonb object for model/tokens/cost/cv_focus/interview_focus (Phase 4A)
 - **job_analysis (job_id, created_at DESC)** — latest analysis lookup
 - **companies (user_id, lower(trim(name)))** — normalized name search (not globally unique)
 - Salary range check on jobs: `salary_max >= salary_min` when both set
@@ -131,6 +138,6 @@ Profiles are created on signup via select-then-insert (`ensureProfile`) — exis
 
 ## Future notes (Phase 4+)
 
-1. OpenAI-backed `job_analysis` and `application_artifacts` generation.
+1. OpenAI-backed `job_analysis` (Phase 4A) and later `application_artifacts` generation.
 2. Optional server-side n8n writers (service role never in the browser).
 3. Optional Storage buckets for CV uploads.

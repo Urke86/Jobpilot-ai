@@ -9,7 +9,9 @@ import {
   Calendar,
   DollarSign,
   ExternalLink,
+  Loader2,
   MapPin,
+  RefreshCw,
   Send,
   ShieldCheck,
   SkipForward,
@@ -42,16 +44,21 @@ import {
   createApplication,
   deleteJob,
   formatSalary,
+  getAnalysisMetadata,
   getApplicationByJobId,
   getJobById,
   getLatestJobAnalysis,
   listCompanies,
+  parseAnalysisGaps,
+  parseAnalysisRisks,
+  parseAnalysisStrengths,
+  requestJobAnalysis,
   setJobStatus,
   updateJob,
   type CreateJobInput,
   type JobAnalysis,
 } from '@/services';
-import type { Enums, Json } from '@/types/database';
+import type { Enums } from '@/types/database';
 import {
   getJobStatusStyle,
   getScoreColor,
@@ -66,11 +73,6 @@ function formatDate(iso: string) {
   });
 }
 
-function asStringList(value: Json): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
-}
-
 function getRecommendationStyle(
   recommendation: Enums<'analysis_recommendation'>,
 ): string {
@@ -82,26 +84,55 @@ function getRecommendationStyle(
   return styles[recommendation];
 }
 
-function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
-  const strengths = asStringList(analysis.strengths);
-  const gaps = asStringList(analysis.gaps);
-  const risks = asStringList(analysis.risks);
+function AnalysisPanel({
+  analysis,
+  analyzing,
+  onReanalyze,
+}: {
+  analysis: JobAnalysis;
+  analyzing: boolean;
+  onReanalyze: () => void;
+}) {
+  const strengths = parseAnalysisStrengths(analysis.strengths);
+  const gaps = parseAnalysisGaps(analysis.gaps);
+  const risks = parseAnalysisRisks(analysis.risks);
+  const meta = getAnalysisMetadata(analysis);
   const score = analysis.overall_match_score;
+  const cvFocus = meta.cv_focus ?? [];
+  const interviewFocus = meta.interview_focus ?? [];
+  const recommendationReason = meta.recommendation_reason;
 
   return (
     <Card className="relative overflow-hidden border-blue-200 dark:border-blue-800">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-violet-500 to-blue-500" />
       <CardHeader className="pb-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-500">
-            <Sparkles className="h-4 w-4 text-white" />
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-500">
+              <Sparkles className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-base">AI Fit Analysis</CardTitle>
+              <CardDescription className="text-xs">
+                {formatDate(analysis.created_at)}
+                {meta.model ? ` · ${meta.model}` : ''}
+              </CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-base">AI Fit Analysis</CardTitle>
-            <CardDescription className="text-xs">
-              From your saved analysis
-            </CardDescription>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 gap-1.5"
+            disabled={analyzing}
+            onClick={onReanalyze}
+          >
+            {analyzing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Re-analyze
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -114,7 +145,7 @@ function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
             </span>
           </div>
           <div>
-            <p className="text-sm font-medium">Match Score</p>
+            <p className="text-sm font-medium">Overall match</p>
             <Badge
               variant="outline"
               className={`mt-1 capitalize ${getRecommendationStyle(analysis.recommendation)}`}
@@ -125,20 +156,20 @@ function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+          {analysis.product_fit_score != null && (
+            <span>Product: {analysis.product_fit_score}</span>
+          )}
           {analysis.technical_fit_score != null && (
             <span>Technical: {analysis.technical_fit_score}</span>
           )}
-          {analysis.experience_fit_score != null && (
-            <span>Experience: {analysis.experience_fit_score}</span>
+          {analysis.ai_tools_fit_score != null && (
+            <span>AI tools: {analysis.ai_tools_fit_score}</span>
           )}
           {analysis.remote_fit_score != null && (
             <span>Remote: {analysis.remote_fit_score}</span>
           )}
-          {analysis.product_fit_score != null && (
-            <span>Product: {analysis.product_fit_score}</span>
-          )}
-          {analysis.ai_tools_fit_score != null && (
-            <span>AI tools: {analysis.ai_tools_fit_score}</span>
+          {analysis.experience_fit_score != null && (
+            <span>Experience: {analysis.experience_fit_score}</span>
           )}
         </div>
 
@@ -150,14 +181,11 @@ function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
               <ShieldCheck className="h-4 w-4" />
               Strengths
             </h4>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {strengths.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-xs text-muted-foreground"
-                >
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                  {s}
+                <li key={i} className="text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{s.title}</p>
+                  <p className="mt-0.5 leading-relaxed">{s.evidence}</p>
                 </li>
               ))}
             </ul>
@@ -170,14 +198,16 @@ function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
               <AlertTriangle className="h-4 w-4" />
               Gaps
             </h4>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {gaps.map((g, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-xs text-muted-foreground"
-                >
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-500" />
-                  {g}
+                <li key={i} className="text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-medium text-foreground">{g.title}</p>
+                    <Badge variant="outline" className="text-[10px] capitalize">
+                      {g.severity}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 leading-relaxed">{g.evidence}</p>
                 </li>
               ))}
             </ul>
@@ -190,31 +220,65 @@ function AnalysisPanel({ analysis }: { analysis: JobAnalysis }) {
               <XCircle className="h-4 w-4" />
               Risks
             </h4>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {risks.map((r, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-xs text-muted-foreground"
-                >
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                  {r}
+                <li key={i} className="text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{r.title}</p>
+                  <p className="mt-0.5 leading-relaxed">{r.reason}</p>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        {(analysis.reasoning_summary || analysis.recommendation) && (
-          <>
-            <Separator />
-            <div>
-              <h4 className="mb-2 text-sm font-semibold">Recommendation</h4>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {analysis.reasoning_summary ||
-                  `Recommendation: ${analysis.recommendation}`}
-              </p>
-            </div>
-          </>
+        <Separator />
+
+        <div>
+          <h4 className="mb-2 text-sm font-semibold">Recommendation</h4>
+          {recommendationReason && (
+            <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
+              {recommendationReason}
+            </p>
+          )}
+          {analysis.reasoning_summary && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {analysis.reasoning_summary}
+            </p>
+          )}
+        </div>
+
+        {cvFocus.length > 0 && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold">CV focus</h4>
+            <ul className="space-y-1.5">
+              {cvFocus.map((item, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-xs text-muted-foreground"
+                >
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {interviewFocus.length > 0 && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold">Interview focus</h4>
+            <ul className="space-y-1.5">
+              {interviewFocus.map((item, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-xs text-muted-foreground"
+                >
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -226,6 +290,8 @@ export default function JobDetailPage() {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const {
     data: job,
@@ -236,7 +302,11 @@ export default function JobDetailPage() {
     [id],
   );
 
-  const { data: analysis, isLoading: analysisLoading } = useResource(
+  const {
+    data: analysis,
+    isLoading: analysisLoading,
+    refetch: refetchAnalysis,
+  } = useResource(
     () => (id ? getLatestJobAnalysis(id) : Promise.resolve(null)),
     [id],
   );
@@ -247,6 +317,25 @@ export default function JobDetailPage() {
   );
 
   const { data: companies } = useResource(listCompanies, []);
+
+  const handleAnalyze = async () => {
+    if (!job || analyzing) return;
+    setAnalyzing(true);
+    setAnalysisError(null);
+    try {
+      await requestJobAnalysis(job.id);
+      toast.success('Analysis complete');
+      refetchAnalysis();
+      refetch();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Analysis failed. Please try again.';
+      setAnalysisError(message);
+      toast.error(message);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const runStatus = async (status: Enums<'job_status'>, label: string) => {
     if (!job) return;
@@ -446,9 +535,7 @@ export default function JobDetailPage() {
         <div className="space-y-6">
           {analysisLoading ? (
             <LoadingState label="Loading analysis…" className="py-10" />
-          ) : analysis ? (
-            <AnalysisPanel analysis={analysis} />
-          ) : (
+          ) : analyzing && !analysis ? (
             <Card className="border-blue-200 dark:border-blue-800">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
@@ -457,12 +544,54 @@ export default function JobDetailPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <EmptyState
-                  icon={Sparkles}
-                  title="No analysis yet"
-                  description="AI analysis will appear here in a future release."
+                <LoadingState
+                  label="Analyzing job against your profile…"
                   className="border-0 py-8"
                 />
+              </CardContent>
+            </Card>
+          ) : analysis ? (
+            <AnalysisPanel
+              analysis={analysis}
+              analyzing={analyzing}
+              onReanalyze={handleAnalyze}
+            />
+          ) : (
+            <Card className="border-blue-200 dark:border-blue-800">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-blue-500" />
+                  <CardTitle className="text-base">AI Fit Analysis</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {analysisError ? (
+                  <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                    <p className="text-sm font-medium text-destructive">
+                      Analysis failed
+                    </p>
+                    <p className="text-xs text-muted-foreground">{analysisError}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      disabled={analyzing}
+                      onClick={handleAnalyze}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Sparkles}
+                    title="No analysis yet"
+                    description="Compare this job to your profile, master CV, and preferences."
+                    actionLabel="Analyze Job"
+                    onAction={handleAnalyze}
+                    className="border-0 py-8"
+                  />
+                )}
               </CardContent>
             </Card>
           )}

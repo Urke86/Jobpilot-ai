@@ -59,6 +59,6 @@ Dashboard, jobs, companies, and applications show intentional empty states when 
 
 - Email confirmation may be autoconfirm-enabled for MVP; harden for production.
 - Direct `supabase db push` still blocked by IPv6 on some networks.
-- Assistant page still uses canned replies with a Phase-4 disclaimer.
-- No AI generation for job analysis or artifacts yet.
-- Cross-user isolation relies on RLS; automated multi-user e2e is manual.
+- AI analysis, artifacts, and streaming assistant run via Edge Functions (`analyze-job`, `generate-artifact`, `chat-assistant`).
+- Cross-user isolation relies on RLS; automated multi-user e2e is mostly manual API smoke.
+- Stop generation aborts the client stream; incomplete assistant rows are not persisted.

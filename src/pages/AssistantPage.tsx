@@ -1,31 +1,50 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search,
-  FileText,
-  PenTool,
-  ClipboardList,
-  Mic,
-  Send,
   Bot,
+  ClipboardList,
+  Copy,
+  FileText,
+  Loader2,
+  Mic,
+  PenTool,
+  Plus,
+  Search,
+  Send,
+  Square,
   User,
 } from 'lucide-react';
-
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
-import type { ChatMessage } from '@/types';
-
-// ---------------------------------------------------------------------------
-// Quick‑action definitions
-// ---------------------------------------------------------------------------
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { useResource } from '@/hooks/use-resource';
+import {
+  createConversation,
+  getConversation,
+  listApplications,
+  listConversations,
+  listJobs,
+  listMessages,
+  streamAssistantMessage,
+  updateConversation,
+  type AiConversation,
+  type AiMessage,
+  type AssistantContextType,
+} from '@/services';
 
 interface QuickAction {
   label: string;
@@ -37,189 +56,393 @@ interface QuickAction {
 const quickActions: QuickAction[] = [
   {
     label: 'Job Analysis',
-    description: 'Analyze a job listing for fit',
+    description: 'Discuss fit for a selected job',
     icon: Search,
     starterMessage:
-      'Can you analyze this job listing and tell me how well it matches my profile?',
+      'Based on my profile and the selected job context, how well do I fit and what are the main gaps?',
   },
   {
     label: 'CV Optimization',
-    description: 'Tailor your resume',
+    description: 'Tailor positioning for a role',
     icon: FileText,
     starterMessage:
-      "I'd like to optimize my CV for a specific role. Can you help me tailor it?",
+      'How should I position my CV for this role using only my demonstrated experience?',
   },
   {
     label: 'Cover Letter',
-    description: 'Generate a cover letter',
+    description: 'Guidance (use Toolkit for full draft)',
     icon: PenTool,
     starterMessage:
-      "Please help me write a compelling cover letter for a position I'm applying to.",
+      'Outline a factual cover letter angle for this role. Remind me to use the Application Toolkit for a full draft.',
   },
   {
     label: 'Questionnaire Prep',
-    description: 'Prepare for application forms',
+    description: 'Draft approach for form answers',
     icon: ClipboardList,
     starterMessage:
-      'I have a job application questionnaire to fill out. Can you help me craft strong answers?',
+      'Help me answer an application questionnaire question using only evidence from my profile and CV.',
   },
   {
     label: 'Interview Prep',
-    description: 'Practice interview questions',
+    description: 'Practice with known gaps',
     icon: Mic,
     starterMessage:
-      'I have an upcoming interview. Can you help me prepare with some practice questions?',
+      'What interview questions should I expect for this role given my strengths and gaps?',
   },
 ];
-
-// ---------------------------------------------------------------------------
-// Canned assistant responses
-// ---------------------------------------------------------------------------
-
-const cannedResponses = [
-  "That's a great question! Based on your profile as a Senior Frontend Engineer, I'd recommend focusing on highlighting your React and TypeScript expertise. Would you like me to draft some specific talking points?",
-  "I've analyzed the key requirements. Here are the top areas where your experience aligns well:\n\n• **Frontend architecture** – your 5+ years of React experience is a strong match\n• **TypeScript** – listed as required, and you have extensive experience\n• **Team leadership** – your mentoring background covers their lead expectations\n\nWould you like me to go deeper on any of these?",
-  "Absolutely, I can help with that! Let me put together a tailored approach. In the meantime, could you share the job description or any specific details you'd like me to focus on?",
-  "Here's a structured preparation plan:\n\n1. **Research the company** – review their engineering blog and recent product launches\n2. **Review common questions** – I'll generate role-specific questions for you\n3. **Prepare your stories** – use the STAR method for behavioral questions\n4. **Technical prep** – focus on system design and coding challenges\n\nShall we start with any of these areas?",
-];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-let nextId = 10;
-function createMessage(
-  role: ChatMessage['role'],
-  content: string,
-): ChatMessage {
-  return {
-    id: String(nextId++),
-    role,
-    content,
-    timestamp: new Date().toISOString(),
-  };
-}
 
 function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Initial messages (welcome + example conversation)
-// ---------------------------------------------------------------------------
-
-const initialMessages: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content:
-      "Hello! I'm your AI job search assistant. I can help you analyze job listings, optimize your CV, generate cover letters, prepare for questionnaires, and practice for interviews. What would you like help with?",
-    timestamp: '2025-01-15T09:00:00Z',
-  },
-  {
-    id: '2',
-    role: 'user',
-    content:
-      'I found a Senior Frontend Engineer role at Supabase. Can you analyze it for me?',
-    timestamp: '2025-01-15T09:01:30Z',
-  },
-  {
-    id: '3',
-    role: 'assistant',
-    content:
-      "Great choice! Supabase is an excellent company with a strong engineering culture. Here's my analysis of the role:\n\n**Match Score: 92%** 🎯\n\n**Strong Matches:**\n• React & TypeScript – core requirements that align perfectly with your experience\n• Open-source contribution – Supabase values this, and you have several OSS projects\n• Remote-first culture – matches your preference for fully remote work\n\n**Areas to Highlight:**\n• Your experience with real-time data and WebSocket integrations\n• Performance optimization work on large-scale dashboards\n\n**Potential Gaps:**\n• PostgreSQL knowledge – consider brushing up on advanced query patterns\n\nWould you like me to help optimize your CV for this specific role?",
-    timestamp: '2025-01-15T09:02:15Z',
-  },
-  {
-    id: '4',
-    role: 'user',
-    content:
-      'Yes, and could you also help me prepare for the technical interview?',
-    timestamp: '2025-01-15T09:03:00Z',
-  },
-  {
-    id: '5',
-    role: 'assistant',
-    content:
-      "Absolutely! Let's tackle both. For your **CV**, I'll tailor the summary and experience sections to emphasize Supabase-relevant skills.\n\nFor **interview prep**, here's what to expect based on Supabase's hiring process:\n\n1. **Initial Screen** – culture fit & motivation (30 min)\n2. **Technical Deep Dive** – React architecture, state management, performance (60 min)\n3. **Live Coding** – building a small feature with React + TypeScript (90 min)\n4. **System Design** – designing a real-time dashboard component (45 min)\n\nLet's start with your CV optimization. Can you paste your current summary section?",
-    timestamp: '2025-01-15T09:03:45Z',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// AssistantPage
-// ---------------------------------------------------------------------------
-
 export default function AssistantPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<AiMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [contextType, setContextType] = useState<AssistantContextType>('none');
+  const [contextJobId, setContextJobId] = useState<string>('');
+  const [contextAppId, setContextAppId] = useState<string>('');
+  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastFailedRef = useRef<string | null>(null);
 
-  // Auto‑scroll to bottom when messages change
+  const {
+    data: conversations,
+    refetch: refetchConversations,
+  } = useResource(listConversations, []);
+
+  const { data: jobs } = useResource(listJobs, []);
+  const { data: applications } = useResource(listApplications, []);
+
+  const activeConversation = useMemo(
+    () => conversations?.find((c) => c.id === conversationId) ?? null,
+    [conversations, conversationId],
+  );
+
+  const jobTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const job of jobs ?? []) {
+      map.set(job.id, `${job.job_title} · ${job.company_name_snapshot}`);
+    }
+    return map;
+  }, [jobs]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages, streamText, streaming]);
 
-  const sendMessage = useCallback(
-    (content: string) => {
-      if (!content.trim() || isTyping) return;
+  const loadConversation = useCallback(async (id: string) => {
+    setConversationId(id);
+    setError(null);
+    setStreamText('');
+    try {
+      const [rows, conv] = await Promise.all([
+        listMessages(id),
+        getConversation(id),
+      ]);
+      setMessages(rows);
+      if (conv) {
+        setContextType((conv.context_type as AssistantContextType) || 'none');
+        setContextJobId(conv.context_job_id ?? '');
+        setContextAppId(conv.context_application_id ?? '');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load messages');
+    }
+  }, []);
 
-      const userMsg = createMessage('user', content.trim());
-      setMessages((prev) => [...prev, userMsg]);
-      setInput('');
-      setIsTyping(true);
+  const openConversation = useCallback(async (conv: AiConversation) => {
+    await loadConversation(conv.id);
+  }, [loadConversation]);
 
-      // Mock AI response after a brief delay
-      setTimeout(() => {
-        const response =
-          cannedResponses[Math.floor(Math.random() * cannedResponses.length)];
-        const assistantMsg = createMessage('assistant', response);
-        setMessages((prev) => [...prev, assistantMsg]);
-        setIsTyping(false);
-      }, 1200);
-    },
-    [isTyping],
-  );
+  useEffect(() => {
+    if (!conversationId && conversations && conversations.length > 0) {
+      void openConversation(conversations[0]);
+    }
+  }, [conversations, conversationId, openConversation]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
+  const startNewConversation = async () => {
+    try {
+      const conv = await createConversation({
+        contextType,
+        contextJobId: contextType === 'job' ? contextJobId || null : null,
+        contextApplicationId:
+          contextType === 'application' ? contextAppId || null : null,
+      });
+      refetchConversations();
+      await openConversation(conv);
+      toast.success('New conversation started');
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Could not create conversation',
+      );
     }
   };
 
-  const handleQuickAction = (action: QuickAction) => {
-    sendMessage(action.starterMessage);
+  const applyContext = async () => {
+    if (!conversationId) {
+      await startNewConversation();
+      return;
+    }
+    try {
+      const updated = await updateConversation(conversationId, {
+        contextType,
+        contextJobId: contextType === 'job' ? contextJobId || null : null,
+        contextApplicationId:
+          contextType === 'application' ? contextAppId || null : null,
+      });
+      refetchConversations();
+      setContextType((updated.context_type as AssistantContextType) || 'none');
+      toast.success('Context updated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Context update failed');
+    }
+  };
+
+  const stopGeneration = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+  };
+
+  const sendMessage = async (content: string) => {
+    const trimmed = content.trim();
+    if (!trimmed || streaming) return;
+
+    let activeId = conversationId;
+    if (!activeId) {
+      try {
+        const conv = await createConversation({
+          contextType,
+          contextJobId: contextType === 'job' ? contextJobId || null : null,
+          contextApplicationId:
+            contextType === 'application' ? contextAppId || null : null,
+        });
+        activeId = conv.id;
+        setConversationId(conv.id);
+        refetchConversations();
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : 'Could not start conversation',
+        );
+        return;
+      }
+    }
+
+    setInput('');
+    setError(null);
+    setStreaming(true);
+    setStreamText('');
+    lastFailedRef.current = trimmed;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      await streamAssistantMessage(activeId, trimmed, {
+        signal: controller.signal,
+        onUserMessage: (msg) => {
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
+        },
+        onToken: (token) => {
+          setStreamText((prev) => prev + token);
+        },
+        onDone: (msg) => {
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
+          setStreamText('');
+          setStreaming(false);
+          lastFailedRef.current = null;
+          refetchConversations();
+        },
+        onError: (message) => {
+          setError(message);
+          setStreaming(false);
+          setStreamText('');
+          toast.error(message);
+        },
+      });
+      // If stream ended without done (rare), clear streaming
+      setStreaming(false);
+      if (streamText) {
+        // incomplete stream discarded intentionally
+        setStreamText('');
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') {
+        setStreaming(false);
+        setStreamText('');
+        return;
+      }
+      const message =
+        err instanceof Error ? err.message : 'Assistant request failed.';
+      setError(message);
+      setStreaming(false);
+      setStreamText('');
+      toast.error(message);
+    } finally {
+      abortRef.current = null;
+    }
+  };
+
+  const retry = () => {
+    if (lastFailedRef.current && !streaming) {
+      void sendMessage(lastFailedRef.current);
+    }
+  };
+
+  const copyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied');
+    } catch {
+      toast.error('Could not copy');
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">AI Assistant</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Get help with your job search
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">AI Assistant</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Contextual help with your jobs, applications, and profile evidence
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => void startNewConversation()}
+          disabled={streaming}
+        >
+          <Plus className="h-4 w-4" />
+          New conversation
+        </Button>
       </div>
 
-      <Alert className="border-blue-200 bg-blue-50/80 text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
-        <Bot className="h-4 w-4" />
-        <AlertTitle>Coming in a future phase</AlertTitle>
-        <AlertDescription>
-          AI Assistant connects in a future phase. Your data is already secured
-          in Supabase. The chat below is a non-AI demo for UI preview only.
-        </AlertDescription>
-      </Alert>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        <div className="col-span-1 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Context</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Focus</Label>
+                <Select
+                  value={contextType}
+                  onValueChange={(v) =>
+                    setContextType(v as AssistantContextType)
+                  }
+                  disabled={streaming}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No specific context</SelectItem>
+                    <SelectItem value="job">Job</SelectItem>
+                    <SelectItem value="application">Application</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {contextType === 'job' ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Job</Label>
+                  <Select
+                    value={contextJobId || undefined}
+                    onValueChange={setContextJobId}
+                    disabled={streaming}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select job" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(jobs ?? []).map((job) => (
+                        <SelectItem key={job.id} value={job.id}>
+                          {job.job_title} · {job.company_name_snapshot}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {contextType === 'application' ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Application</Label>
+                  <Select
+                    value={contextAppId || undefined}
+                    onValueChange={setContextAppId}
+                    disabled={streaming}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select application" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(applications ?? []).map((app) => (
+                        <SelectItem key={app.id} value={app.id}>
+                          {jobTitleById.get(app.job_id) ?? 'Job'} · {app.stage}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="w-full"
+                onClick={() => void applyContext()}
+                disabled={streaming}
+              >
+                Apply context
+              </Button>
+            </CardContent>
+          </Card>
 
-      {/* Two‑column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* ---- Left Sidebar: Quick Actions ---- */}
-        <div className="col-span-1">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Conversations</CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-56 space-y-1 overflow-y-auto">
+              {(conversations ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No conversations yet.
+                </p>
+              ) : (
+                (conversations ?? []).map((conv) => (
+                  <button
+                    key={conv.id}
+                    type="button"
+                    onClick={() => void openConversation(conv)}
+                    className={`w-full rounded-md border px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/60 ${
+                      conversationId === conv.id ? 'border-primary' : ''
+                    }`}
+                  >
+                    <p className="line-clamp-1 font-medium">{conv.title}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {conv.context_type} ·{' '}
+                      {new Date(conv.updated_at).toLocaleDateString()}
+                    </p>
+                  </button>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Quick Actions</CardTitle>
@@ -230,8 +453,10 @@ export default function AssistantPage() {
                 return (
                   <button
                     key={action.label}
-                    onClick={() => handleQuickAction(action)}
-                    className="w-full flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    type="button"
+                    onClick={() => void sendMessage(action.starterMessage)}
+                    disabled={streaming}
+                    className="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/60 disabled:opacity-50"
                   >
                     <div className="mt-0.5 rounded-md bg-primary/10 p-2">
                       <Icon className="h-4 w-4 text-primary" />
@@ -240,7 +465,7 @@ export default function AssistantPage() {
                       <p className="text-sm font-medium leading-tight">
                         {action.label}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {action.description}
                       </p>
                     </div>
@@ -251,15 +476,28 @@ export default function AssistantPage() {
           </Card>
         </div>
 
-        {/* ---- Right Section: Chat ---- */}
-        <div className="col-span-1 lg:col-span-3 flex flex-col">
-          <Card className="flex flex-col flex-1">
-            {/* Messages area */}
-            <ScrollArea
-              className="flex-1 h-[calc(100vh-280px)]"
-              ref={scrollRef}
-            >
-              <div className="p-4 space-y-4">
+        <div className="col-span-1 flex flex-col lg:col-span-3">
+          <Card className="flex flex-1 flex-col">
+            <CardHeader className="border-b py-3">
+              <CardTitle className="text-base">
+                {activeConversation?.title ?? 'Assistant'}
+              </CardTitle>
+            </CardHeader>
+            <ScrollArea className="h-[calc(100vh-320px)] flex-1" ref={scrollRef}>
+              <div className="space-y-4 p-4">
+                {messages.length === 0 && !streaming ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+                    <Bot className="h-8 w-8" />
+                    <p>
+                      Ask about fit, gaps, CV positioning, questionnaires, or
+                      interviews.
+                    </p>
+                    <p className="text-xs">
+                      Answers use only your saved JobPilot evidence.
+                    </p>
+                  </div>
+                ) : null}
+
                 {messages.map((msg) => {
                   const isUser = msg.role === 'user';
                   return (
@@ -268,11 +506,10 @@ export default function AssistantPage() {
                       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`flex items-start gap-2.5 max-w-[80%] ${isUser ? 'flex-row-reverse' : ''}`}
+                        className={`flex max-w-[85%] items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}
                       >
-                        {/* Avatar */}
                         <div
-                          className={`flex-shrink-0 mt-1 flex h-7 w-7 items-center justify-center rounded-full ${
+                          className={`mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${
                             isUser
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-muted text-muted-foreground'
@@ -284,72 +521,115 @@ export default function AssistantPage() {
                             <Bot className="h-3.5 w-3.5" />
                           )}
                         </div>
-
-                        {/* Bubble + timestamp */}
                         <div>
                           <div
-                            className={`px-3.5 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
+                            className={`whitespace-pre-wrap px-3.5 py-2.5 text-sm leading-relaxed ${
                               isUser
-                                ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-sm'
-                                : 'bg-muted rounded-2xl rounded-bl-sm'
+                                ? 'rounded-2xl rounded-br-sm bg-primary text-primary-foreground'
+                                : 'rounded-2xl rounded-bl-sm bg-muted'
                             }`}
                           >
                             {msg.content}
                           </div>
-                          <p
-                            className={`text-[10px] text-muted-foreground/60 mt-1 ${isUser ? 'text-right' : 'text-left'}`}
+                          <div
+                            className={`mt-1 flex items-center gap-2 text-[10px] text-muted-foreground/60 ${isUser ? 'justify-end' : 'justify-start'}`}
                           >
-                            {formatTime(msg.timestamp)}
-                          </p>
+                            <span>{formatTime(msg.created_at)}</span>
+                            {!isUser ? (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-0.5 hover:text-foreground"
+                                onClick={() => void copyMessage(msg.content)}
+                              >
+                                <Copy className="h-3 w-3" />
+                                Copy
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Typing indicator */}
-                {isTyping && (
+                {streaming ? (
                   <div className="flex justify-start">
-                    <div className="flex items-start gap-2.5 max-w-[80%]">
-                      <div className="flex-shrink-0 mt-1 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <div className="flex max-w-[85%] items-start gap-2.5">
+                      <div className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                         <Bot className="h-3.5 w-3.5" />
                       </div>
-                      <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3">
-                        <div className="flex gap-1">
-                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
-                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
-                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
-                        </div>
+                      <div className="rounded-2xl rounded-bl-sm bg-muted px-3.5 py-2.5 text-sm whitespace-pre-wrap leading-relaxed">
+                        {streamText || (
+                          <span className="inline-flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Thinking…
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
+
+                {error ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                    <p className="font-medium text-destructive">
+                      Generation failed
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={retry}
+                      disabled={streaming || !lastFailedRef.current}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </ScrollArea>
 
-            {/* Input area */}
             <div className="border-t p-4">
               <div className="flex items-end gap-2">
                 <Textarea
-                  ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage(input);
+                    }
+                  }}
                   placeholder="Ask about jobs, applications, or interview prep..."
-                  className="min-h-[44px] max-h-[160px] resize-none rounded-xl border-border/60 focus-visible:ring-1"
+                  className="min-h-[44px] max-h-[160px] resize-none rounded-xl"
                   rows={1}
+                  disabled={streaming}
                 />
-                <Button
-                  size="icon"
-                  className="h-[44px] w-[44px] rounded-xl flex-shrink-0"
-                  onClick={() => sendMessage(input)}
-                  disabled={!input.trim() || isTyping}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                {streaming ? (
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-[44px] w-[44px] flex-shrink-0 rounded-xl"
+                    onClick={stopGeneration}
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon"
+                    className="h-[44px] w-[44px] flex-shrink-0 rounded-xl"
+                    onClick={() => void sendMessage(input)}
+                    disabled={!input.trim()}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              <p className="text-[11px] text-muted-foreground/50 mt-2 text-center">
-                Demo only — responses are canned and not connected to real AI
+              <p className="mt-2 text-center text-[11px] text-muted-foreground/60">
+                Uses only your JobPilot profile, CV, and selected context —
+                never invents experience
               </p>
             </div>
           </Card>
