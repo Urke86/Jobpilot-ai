@@ -14,6 +14,7 @@ JobPilot AI helps users discover jobs, track applications, manage companies/cont
 | AI | OpenAI via Edge Functions `analyze-job`, `generate-artifact`, `chat-assistant`, email classify |
 | Automation | n8n → Edge Function `ingest-job` (secret + target user) |
 | Integrations | Google Gmail (readonly) + Calendar events via Edge OAuth |
+| Observability | `ai_generations` + Settings AI Analytics (Phase 4E) |
 
 ## Directory highlights
 
@@ -54,7 +55,7 @@ Settings Connect Google → google-oauth-* → user_integrations (encrypted)
 Hiring Inbox Sync → gmail-sync → job_emails → user-approved hiring-email-action
 ```
 
-See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), [AI_ARTIFACTS.md](./AI_ARTIFACTS.md), [AI_ASSISTANT.md](./AI_ASSISTANT.md), [N8N_AUTOMATION.md](./N8N_AUTOMATION.md), and [GOOGLE_INTEGRATION.md](./GOOGLE_INTEGRATION.md).
+See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), [AI_ARTIFACTS.md](./AI_ARTIFACTS.md), [AI_ASSISTANT.md](./AI_ASSISTANT.md), [N8N_AUTOMATION.md](./N8N_AUTOMATION.md), [GOOGLE_INTEGRATION.md](./GOOGLE_INTEGRATION.md), and [AI_OBSERVABILITY.md](./AI_OBSERVABILITY.md).
 
 ## Phase status
 
@@ -68,7 +69,8 @@ See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.m
 | 4C.1 Streaming assistant | Done |
 | 4C.2 n8n job ingestion | Done |
 | 4D Gmail + Calendar | Done |
-| 4E+ send email / RAG / agents | Not started |
+| 4E AI observability | Done |
+| 4F+ RAG / agents / send email | Not started |
 
 ## Environment
 

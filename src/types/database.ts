@@ -707,6 +707,180 @@ export type Database = {
         }
         Relationships: []
       }
+      prompt_versions: {
+        Row: {
+          id: string
+          feature: Database["public"]["Enums"]["ai_feature"]
+          version: string
+          description: string | null
+          system_prompt: string
+          changelog: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          feature: Database["public"]["Enums"]["ai_feature"]
+          version: string
+          description?: string | null
+          system_prompt?: string
+          changelog?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          feature?: Database["public"]["Enums"]["ai_feature"]
+          version?: string
+          description?: string | null
+          system_prompt?: string
+          changelog?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      ai_generations: {
+        Row: {
+          id: string
+          user_id: string
+          feature: Database["public"]["Enums"]["ai_feature"]
+          provider: string
+          model: string | null
+          prompt_version: string | null
+          status: Database["public"]["Enums"]["ai_generation_status"]
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          estimated_cost_usd: number | null
+          latency_ms: number | null
+          error_code: string | null
+          error_message: string | null
+          source_table: string | null
+          source_id: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          feature: Database["public"]["Enums"]["ai_feature"]
+          provider?: string
+          model?: string | null
+          prompt_version?: string | null
+          status?: Database["public"]["Enums"]["ai_generation_status"]
+          input_tokens?: number | null
+          output_tokens?: number | null
+          total_tokens?: number | null
+          estimated_cost_usd?: number | null
+          latency_ms?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          source_table?: string | null
+          source_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          feature?: Database["public"]["Enums"]["ai_feature"]
+          provider?: string
+          model?: string | null
+          prompt_version?: string | null
+          status?: Database["public"]["Enums"]["ai_generation_status"]
+          input_tokens?: number | null
+          output_tokens?: number | null
+          total_tokens?: number | null
+          estimated_cost_usd?: number | null
+          latency_ms?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          source_table?: string | null
+          source_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      ai_evaluations: {
+        Row: {
+          id: string
+          user_id: string
+          generation_id: string
+          evaluator: string
+          score: number
+          result: Json
+          explanation: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          generation_id: string
+          evaluator?: string
+          score: number
+          result?: Json
+          explanation?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          generation_id?: string
+          evaluator?: string
+          score?: number
+          result?: Json
+          explanation?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      ai_observability_alerts: {
+        Row: {
+          id: string
+          user_id: string
+          kind: Database["public"]["Enums"]["ai_alert_kind"]
+          severity: Database["public"]["Enums"]["ai_alert_severity"]
+          title: string
+          message: string
+          metric_value: number | null
+          threshold_value: number | null
+          acknowledged_at: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: Database["public"]["Enums"]["ai_alert_kind"]
+          severity?: Database["public"]["Enums"]["ai_alert_severity"]
+          title: string
+          message: string
+          metric_value?: number | null
+          threshold_value?: number | null
+          acknowledged_at?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          kind?: Database["public"]["Enums"]["ai_alert_kind"]
+          severity?: Database["public"]["Enums"]["ai_alert_severity"]
+          title?: string
+          message?: string
+          metric_value?: number | null
+          threshold_value?: number | null
+          acknowledged_at?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -728,6 +902,7 @@ export type Database = {
         | "job_email"
         | "user_integration"
         | "application_event"
+        | "ai_generation"
       activity_type:
         | "job_discovered"
         | "job_status_changed"
@@ -746,6 +921,38 @@ export type Database = {
         | "hiring_email_linked"
         | "stage_accepted_from_email"
         | "interview_event_created"
+        | "ai_generation_recorded"
+        | "ai_evaluation_submitted"
+        | "ai_alert_raised"
+      ai_alert_kind:
+        | "daily_spend_exceeded"
+        | "latency_elevated"
+        | "failure_rate_elevated"
+        | "cost_trend_up"
+        | "eval_score_declining"
+        | "custom"
+      ai_alert_severity: "info" | "warning" | "critical"
+      ai_feature:
+        | "analyze_job"
+        | "assistant"
+        | "cv_recommendations"
+        | "cv_summary"
+        | "cover_letter"
+        | "questionnaire"
+        | "linkedin_message"
+        | "follow_up"
+        | "interview_questions"
+        | "interview_answers"
+        | "company_research"
+        | "gmail_classification"
+        | "custom"
+      ai_generation_status:
+        | "success"
+        | "error"
+        | "validation_failed"
+        | "rate_limited"
+        | "provider_error"
+        | "cancelled"
       ai_message_role: "user" | "assistant" | "system"
       analysis_recommendation: "apply" | "consider" | "skip"
       application_event_type:
@@ -951,6 +1158,7 @@ export const Constants = {
         "job_email",
         "user_integration",
         "application_event",
+        "ai_generation",
       ],
       activity_type: [
         "job_discovered",
@@ -970,6 +1178,41 @@ export const Constants = {
         "hiring_email_linked",
         "stage_accepted_from_email",
         "interview_event_created",
+        "ai_generation_recorded",
+        "ai_evaluation_submitted",
+        "ai_alert_raised",
+      ],
+      ai_alert_kind: [
+        "daily_spend_exceeded",
+        "latency_elevated",
+        "failure_rate_elevated",
+        "cost_trend_up",
+        "eval_score_declining",
+        "custom",
+      ],
+      ai_alert_severity: ["info", "warning", "critical"],
+      ai_feature: [
+        "analyze_job",
+        "assistant",
+        "cv_recommendations",
+        "cv_summary",
+        "cover_letter",
+        "questionnaire",
+        "linkedin_message",
+        "follow_up",
+        "interview_questions",
+        "interview_answers",
+        "company_research",
+        "gmail_classification",
+        "custom",
+      ],
+      ai_generation_status: [
+        "success",
+        "error",
+        "validation_failed",
+        "rate_limited",
+        "provider_error",
+        "cancelled",
       ],
       ai_message_role: ["user", "assistant", "system"],
       analysis_recommendation: ["apply", "consider", "skip"],

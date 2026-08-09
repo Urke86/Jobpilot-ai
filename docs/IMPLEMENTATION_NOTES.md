@@ -142,3 +142,26 @@ Not in 4D: auto-send email, auto-accept interviews, auto calendar without confir
 4. Global AI spend dashboards
 5. Vitest for classify schema + OAuth state helpers
 6. Harden email confirmation / password reset
+
+## Phase 4E — AI Observability
+
+### What shipped
+
+- Tables: `prompt_versions`, `ai_generations`, `ai_evaluations`, `ai_observability_alerts`
+- Edge instrumentation via `_shared/ai-observability.ts`
+- Settings → AI Analytics dashboard (spend/latency/model/feature charts)
+- Prompt registry + manual evaluation framework
+- Soft regression alerts (in-app only)
+- Docs: `docs/AI_OBSERVABILITY.md`
+
+### Boundaries (explicit)
+
+Not in 4E: RAG, embeddings, agents, LinkedIn automation, external notification systems.
+
+### Phase 4F recommendations
+
+1. LLM-as-judge evaluation jobs
+2. Retention policies for `ai_generations`
+3. Org budgets / hard spend caps
+4. Optional webhook/email alert channels
+5. Backfill historical metadata into `ai_generations`

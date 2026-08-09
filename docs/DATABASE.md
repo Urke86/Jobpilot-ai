@@ -18,6 +18,10 @@ Phase 2 schema for multi-user job search and application tracking.
 | `user_integrations` | Connected providers (Google tokens encrypted) |
 | `job_emails` | Hiring-related Gmail messages (Phase 4D) |
 | `application_events` | Confirmed Calendar / interview events |
+| `prompt_versions` | Append-only AI prompt registry (Phase 4E) |
+| `ai_generations` | Central AI generation / spend / latency log |
+| `ai_evaluations` | Quality scores for generations |
+| `ai_observability_alerts` | Soft in-app spend/latency/quality alerts |
 | `activities` | Dashboard feed / audit trail |
 
 All tables use UUID PKs, `timestamptz` timestamps, and `user_id → auth.users(id)` ownership.

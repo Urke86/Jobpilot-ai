@@ -1,5 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@3.23.8';
+import {
+  artifactTypeToFeature,
+  recordAiGeneration,
+} from '../_shared/ai-observability.ts';
 
 const ARTIFACT_VERSION = 'v1-artifacts';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
@@ -752,6 +756,17 @@ Deno.serve(async (req) => {
 
     if (!validated.success) {
       console.error('schema_error', validated.error.message);
+      await recordAiGeneration(supabase, {
+        userId: user.id,
+        feature: artifactTypeToFeature(artifactType),
+        model,
+        promptVersion: ARTIFACT_VERSION,
+        status: 'validation_failed',
+        latencyMs: openaiResult.duration_ms,
+        errorCode: 'schema_validation',
+        errorMessage: 'AI response failed validation',
+        metadata: { application_id: applicationId, artifact_type: artifactType },
+      });
       return jsonResponse(
         { error: 'AI response failed validation and was not saved.' },
         502,
@@ -820,6 +835,26 @@ Deno.serve(async (req) => {
         version: nextVersion,
         model,
         duration_ms: openaiResult.duration_ms,
+      },
+    });
+
+    await recordAiGeneration(supabase, {
+      userId: user.id,
+      feature: artifactTypeToFeature(artifactType),
+      model,
+      promptVersion: ARTIFACT_VERSION,
+      status: 'success',
+      inputTokens: openaiResult.usage.prompt_tokens,
+      outputTokens: openaiResult.usage.completion_tokens,
+      totalTokens: openaiResult.usage.total_tokens,
+      estimatedCostUsd: metadata.estimated_cost_usd,
+      latencyMs: openaiResult.duration_ms,
+      sourceTable: 'application_artifacts',
+      sourceId: inserted.id,
+      metadata: {
+        application_id: applicationId,
+        artifact_type: artifactType,
+        artifact_row_version: nextVersion,
       },
     });
 

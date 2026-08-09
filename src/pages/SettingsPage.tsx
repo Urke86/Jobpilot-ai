@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState, LoadingState } from '@/components/common';
+import { AiAnalyticsPanel } from '@/components/settings/AiAnalyticsPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -170,6 +171,7 @@ export default function SettingsPage() {
   const tabParam = searchParams.get('tab');
   const activeTab =
     tabParam === 'integrations' ||
+    tabParam === 'ai-analytics' ||
     tabParam === 'preferences' ||
     tabParam === 'notifications' ||
     tabParam === 'appearance' ||
@@ -376,6 +378,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="ai-analytics">AI Analytics</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
@@ -624,6 +627,10 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="ai-analytics" className="space-y-6">
+          <AiAnalyticsPanel />
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">

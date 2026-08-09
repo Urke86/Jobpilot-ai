@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@3.23.8';
+import { recordAiGeneration } from '../_shared/ai-observability.ts';
 
 const ANALYSIS_VERSION = 'v1-structured';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
@@ -492,6 +493,17 @@ Deno.serve(async (req) => {
     if (!validated.success) {
       console.error('schema_error', validated.error.message);
       await supabase.from('jobs').update({ status: 'reviewed' }).eq('id', jobId);
+      await recordAiGeneration(supabase, {
+        userId: actingUserId,
+        feature: 'analyze_job',
+        model,
+        promptVersion: ANALYSIS_VERSION,
+        status: 'validation_failed',
+        latencyMs: Date.now() - openaiStarted,
+        errorCode: 'schema_validation',
+        errorMessage: 'AI response failed validation',
+        metadata: { job_id: jobId },
+      });
       return jsonResponse(
         { error: 'AI response failed validation and was not saved.' },
         502,
@@ -584,6 +596,22 @@ Deno.serve(async (req) => {
         duration_ms: durationMs,
         model,
       },
+    });
+
+    await recordAiGeneration(supabase, {
+      userId: actingUserId,
+      feature: 'analyze_job',
+      model,
+      promptVersion: ANALYSIS_VERSION,
+      status: 'success',
+      inputTokens: promptTokens,
+      outputTokens: completionTokens,
+      totalTokens,
+      estimatedCostUsd: estimatedCost,
+      latencyMs: durationMs,
+      sourceTable: 'job_analysis',
+      sourceId: inserted.id,
+      metadata: { job_id: jobId },
     });
 
     return jsonResponse({

@@ -117,6 +117,24 @@ export {
 } from './app/google-integration';
 
 export {
+  listAiGenerations,
+  listPromptVersions,
+  listAiEvaluations,
+  listAiAlerts,
+  acknowledgeAiAlert,
+  submitAiEvaluation,
+  recordManualAiFailure,
+  getAiAnalyticsSummary,
+  computeAnalyticsSummary,
+  refreshSoftAlerts,
+  type AiGenerationRow,
+  type AiEvaluationRow,
+  type AiAlertRow,
+  type PromptVersionRow,
+  type AiAnalyticsSummary,
+} from './app/ai-observability';
+
+export {
   getDashboardData,
   type DashboardData,
   type DashboardStats,

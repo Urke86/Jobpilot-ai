@@ -11,6 +11,7 @@ import {
   estimateCostUsd,
   looksHiringRelated,
 } from '../_shared/email-classify.ts';
+import { recordAiGeneration } from '../_shared/ai-observability.ts';
 
 const MAX_MESSAGES = 25;
 const LOOKBACK_DAYS = 14;
@@ -442,12 +443,39 @@ Deno.serve(async (req) => {
             ),
           };
           classified++;
+          await recordAiGeneration(supabase, {
+            userId,
+            feature: 'gmail_classification',
+            model,
+            promptVersion: 'gmail-sync-v1',
+            status: 'success',
+            inputTokens: usage.prompt_tokens,
+            outputTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+            estimatedCostUsd: aiMeta.estimated_cost_usd as number,
+            latencyMs: duration_ms,
+            metadata: {
+              gmail_message_id: ref.id,
+              classification,
+            },
+          });
         } catch (err) {
           classifyFailed++;
           console.error(
             'classify_item_failed',
             err instanceof Error ? err.message : 'unknown',
           );
+          await recordAiGeneration(supabase, {
+            userId,
+            feature: 'gmail_classification',
+            model,
+            promptVersion: 'gmail-sync-v1',
+            status: 'provider_error',
+            errorCode: 'classify_failed',
+            errorMessage:
+              err instanceof Error ? err.message : 'classify_failed',
+            metadata: { gmail_message_id: ref.id },
+          });
           // Deterministic fallback so sync still yields actionable hiring rows.
           const blob = `${subject}\n${snippet}\n${bodyText}`.toLowerCase();
           if (/\bquestionnaire\b|\bapplication form\b|\bplease complete\b/.test(blob)) {

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
+import { recordAiGeneration } from '../_shared/ai-observability.ts';
 
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
 const GENERATION_VERSION = 'v1-assistant';
@@ -545,6 +546,20 @@ Deno.serve(async (req) => {
 
           if (insertError || !assistantMessage) {
             console.error('assistant_insert', insertError?.message);
+            await recordAiGeneration(supabase, {
+              userId: user.id,
+              feature: 'assistant',
+              model,
+              promptVersion: GENERATION_VERSION,
+              status: 'error',
+              inputTokens: usage.prompt_tokens,
+              outputTokens: usage.completion_tokens,
+              totalTokens: usage.total_tokens,
+              latencyMs: durationMs,
+              errorCode: 'persist_failed',
+              errorMessage: insertError?.message ?? 'Failed to save',
+              metadata: { conversation_id: conversationId },
+            });
             send({
               type: 'error',
               error: 'Failed to save assistant response.',
@@ -557,6 +572,25 @@ Deno.serve(async (req) => {
             .from('ai_conversations')
             .update({ updated_at: new Date().toISOString() })
             .eq('id', conversationId);
+
+          await recordAiGeneration(supabase, {
+            userId: user.id,
+            feature: 'assistant',
+            model,
+            promptVersion: GENERATION_VERSION,
+            status: 'success',
+            inputTokens: usage.prompt_tokens,
+            outputTokens: usage.completion_tokens,
+            totalTokens: usage.total_tokens,
+            estimatedCostUsd: metadata.estimated_cost_usd,
+            latencyMs: durationMs,
+            sourceTable: 'ai_messages',
+            sourceId: assistantMessage.id,
+            metadata: {
+              conversation_id: conversationId,
+              context_type: conversation.context_type,
+            },
+          });
 
           send({
             type: 'done',
@@ -574,6 +608,17 @@ Deno.serve(async (req) => {
             'stream_error',
             err instanceof Error ? err.message : err,
           );
+          await recordAiGeneration(supabase, {
+            userId: user.id,
+            feature: 'assistant',
+            model,
+            promptVersion: GENERATION_VERSION,
+            status: 'provider_error',
+            errorCode: 'stream_error',
+            errorMessage:
+              err instanceof Error ? err.message : 'Streaming interrupted',
+            metadata: { conversation_id: conversationId },
+          });
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
