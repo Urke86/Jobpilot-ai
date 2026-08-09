@@ -37,6 +37,8 @@ export default function SignupPage() {
   const { signUp } = useAuth();
   const navigate = useNavigate();
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   const {
     register,
@@ -55,11 +57,16 @@ export default function SignupPage() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await signUp({
+      const { needsEmailConfirmation } = await signUp({
         email: values.email,
         password: values.password,
         fullName: values.fullName,
       });
+      if (needsEmailConfirmation) {
+        setPendingEmail(values.email.trim());
+        setPendingConfirmation(true);
+        return;
+      }
       navigate(ROUTES.dashboard, { replace: true });
     } catch (err) {
       setFormError(
@@ -69,6 +76,43 @@ export default function SignupPage() {
       );
     }
   });
+
+  if (pendingConfirmation) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50 px-4 py-12 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+        <Card className="relative w-full max-w-md border-border/60 shadow-lg">
+          <CardHeader className="space-y-4 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white">
+              <Compass className="h-5 w-5" />
+            </div>
+            <div className="space-y-1.5">
+              <CardTitle className="text-2xl tracking-tight">
+                Confirm your email
+              </CardTitle>
+              <CardDescription>
+                We created your account
+                {pendingEmail ? (
+                  <>
+                    {' '}
+                    for <span className="font-medium text-foreground">{pendingEmail}</span>
+                  </>
+                ) : null}
+                . Check your inbox and confirm before signing in.
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardFooter className="justify-center">
+            <Link
+              to={ROUTES.login}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+            >
+              Back to sign in
+            </Link>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50 px-4 py-12 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">

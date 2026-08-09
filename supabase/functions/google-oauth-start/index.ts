@@ -1,5 +1,5 @@
 import {
-  corsHeaders,
+  corsHeadersFor,
   getGoogleClientConfig,
   GOOGLE_SCOPES,
   jsonResponse,
@@ -9,11 +9,11 @@ import {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
   try {
     if (req.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
+      return jsonResponse({ error: 'Method not allowed' }, 405, req);
     }
 
     let userId: string;
@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
             'Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI.',
         },
         503,
+        req,
       );
     }
 
@@ -50,12 +51,16 @@ Deno.serve(async (req) => {
       state,
     });
 
-    return jsonResponse({
-      url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
-      scopes: GOOGLE_SCOPES,
-    });
+    return jsonResponse(
+      {
+        url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+        scopes: GOOGLE_SCOPES,
+      },
+      200,
+      req,
+    );
   } catch (error) {
     console.error('oauth_start_error', error instanceof Error ? error.message : error);
-    return jsonResponse({ error: 'Unexpected server error.' }, 500);
+    return jsonResponse({ error: 'Unexpected server error.' }, 500, req);
   }
 });

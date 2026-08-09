@@ -4,6 +4,9 @@ import {
   artifactTypeToFeature,
   recordAiGeneration,
 } from '../_shared/ai-observability.ts';
+import { corsHeadersFor } from '../_shared/cors.ts';
+import { fetchWithTimeout, OPENAI_TIMEOUT_MS } from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const ARTIFACT_VERSION = 'v1-artifacts';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
@@ -271,16 +274,10 @@ const ACTIVITY_TITLES: Partial<Record<ArtifactType, string>> = {
   custom: 'Custom artifact generated',
 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-};
-
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -362,26 +359,30 @@ async function callOpenAi(args: {
   }
 
   const started = Date.now();
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${args.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: args.model,
-      temperature: 0.3,
-      messages,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: `artifact_${args.artifactType}`,
-          strict: true,
-          schema: jsonSchemas[args.artifactType],
-        },
+  const res = await fetchWithTimeout(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${args.apiKey}`,
+        'Content-Type': 'application/json',
       },
-    }),
-  });
+      body: JSON.stringify({
+        model: args.model,
+        temperature: 0.3,
+        messages,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: `artifact_${args.artifactType}`,
+            strict: true,
+            schema: jsonSchemas[args.artifactType],
+          },
+        },
+      }),
+    },
+    OPENAI_TIMEOUT_MS,
+  );
 
   if (!res.ok) {
     const errText = await res.text();
@@ -422,7 +423,7 @@ async function callOpenAi(args: {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   try {
@@ -597,16 +598,18 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (recent?.created_at) {
-      const ageMs = Date.now() - new Date(recent.created_at).getTime();
-      if (ageMs < RATE_LIMIT_SECONDS * 1000) {
-        return jsonResponse(
-          {
-            error: `Please wait ${RATE_LIMIT_SECONDS} seconds before regenerating this artifact.`,
-          },
-          429,
-        );
-      }
+    const leaseOk = await tryAcquireRateLimit(
+      supabase,
+      `generate-artifact:${applicationId}:${artifactType}`,
+      RATE_LIMIT_SECONDS,
+    );
+    if (!leaseOk) {
+      return jsonResponse(
+        {
+          error: `Please wait ${RATE_LIMIT_SECONDS} seconds before regenerating this artifact.`,
+        },
+        429,
+      );
     }
 
     const nextVersion = (recent?.version ?? 0) + 1;

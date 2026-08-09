@@ -1,4 +1,5 @@
 import { z } from 'npm:zod@3.23.8';
+import { fetchWithTimeout, OPENAI_TIMEOUT_MS } from './fetch-timeout.ts';
 
 function nullableString() {
   return z.preprocess((v) => {
@@ -129,22 +130,26 @@ ${params.bodyExcerpt.slice(0, 6000)}
 CANDIDATE_APPLICATION_CONTEXT:
 ${params.contextSummary.slice(0, 4000)}`;
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.openaiKey}`,
-      'Content-Type': 'application/json',
+  const res = await fetchWithTimeout(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${params.openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: params.model,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: CLASSIFY_SYSTEM },
+          { role: 'user', content: userContent },
+        ],
+        response_format: { type: 'json_object' },
+      }),
     },
-    body: JSON.stringify({
-      model: params.model,
-      temperature: 0.1,
-      messages: [
-        { role: 'system', content: CLASSIFY_SYSTEM },
-        { role: 'user', content: userContent },
-      ],
-      response_format: { type: 'json_object' },
-    }),
-  });
+    OPENAI_TIMEOUT_MS,
+  );
 
   if (!res.ok) {
     // Log status only — never provider payloads or email content.

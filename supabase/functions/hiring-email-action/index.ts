@@ -1,10 +1,12 @@
 import {
   adminClient,
-  corsHeaders,
+  corsHeadersFor,
   getValidGoogleAccessToken,
   jsonResponse,
   requireUserClient,
 } from '../_shared/google-auth.ts';
+import { fetchWithTimeout, GOOGLE_TIMEOUT_MS } from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const STAGES = new Set([
   'preparing',
@@ -19,12 +21,12 @@ const STAGES = new Set([
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   try {
     if (req.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
+      return jsonResponse({ error: 'Method not allowed' }, 405, req);
     }
 
     let userId: string;
@@ -41,11 +43,11 @@ Deno.serve(async (req) => {
     const emailId = typeof body?.emailId === 'string' ? body.emailId : '';
 
     if (!action) {
-      return jsonResponse({ error: 'action is required.' }, 400);
+      return jsonResponse({ error: 'action is required.' }, 400, req);
     }
 
     if (action !== 'create_calendar_event' && !emailId) {
-      return jsonResponse({ error: 'emailId is required.' }, 400);
+      return jsonResponse({ error: 'emailId is required.' }, 400, req);
     }
 
     const loadEmail = async () => {
@@ -65,7 +67,7 @@ Deno.serve(async (req) => {
       const applicationId =
         typeof body.applicationId === 'string' ? body.applicationId : '';
       if (!applicationId) {
-        return jsonResponse({ error: 'applicationId is required.' }, 400);
+        return jsonResponse({ error: 'applicationId is required.' }, 400, req);
       }
       const { data: app } = await supabase
         .from('applications')
@@ -73,10 +75,10 @@ Deno.serve(async (req) => {
         .eq('id', applicationId)
         .maybeSingle();
       if (!app || app.user_id !== userId) {
-        return jsonResponse({ error: 'Application not found.' }, 404);
+        return jsonResponse({ error: 'Application not found.' }, 404, req);
       }
       const email = await loadEmail();
-      if (!email) return jsonResponse({ error: 'Email not found.' }, 404);
+      if (!email) return jsonResponse({ error: 'Email not found.' }, 404, req);
 
       const { data: job } = await supabase
         .from('jobs')
@@ -100,7 +102,7 @@ Deno.serve(async (req) => {
         .select('*')
         .single();
       if (error) {
-        return jsonResponse({ error: 'Failed to link application.' }, 500);
+        return jsonResponse({ error: 'Failed to link application.' }, 500, req);
       }
 
       // Propagate thread link
@@ -128,24 +130,23 @@ Deno.serve(async (req) => {
         metadata: { application_id: app.id, email_id: email.id },
       });
 
-      return jsonResponse({ status: 'linked', email: updated });
+      return jsonResponse({ status: 'linked', email: updated }, 200, req);
     }
 
     if (action === 'accept_stage') {
       const email = await loadEmail();
-      if (!email) return jsonResponse({ error: 'Email not found.' }, 404);
+      if (!email) return jsonResponse({ error: 'Email not found.' }, 404, req);
       const stage =
         typeof body.stage === 'string'
           ? body.stage
           : email.extracted_data?.suggested_application_stage;
       if (!stage || !STAGES.has(stage)) {
-        return jsonResponse({ error: 'Valid stage is required.' }, 400);
+        return jsonResponse({ error: 'Valid stage is required.' }, 400, req);
       }
       if (!email.application_id) {
         return jsonResponse(
           { error: 'Link an application before changing stage.' },
-          400,
-        );
+          400, req);
       }
 
       const { data: app, error: appErr } = await supabase
@@ -156,7 +157,7 @@ Deno.serve(async (req) => {
         .select('*')
         .single();
       if (appErr || !app) {
-        return jsonResponse({ error: 'Failed to update application stage.' }, 500);
+        return jsonResponse({ error: 'Failed to update application stage.' }, 500, req);
       }
 
       await supabase
@@ -182,12 +183,12 @@ Deno.serve(async (req) => {
         metadata: { email_id: email.id, stage },
       });
 
-      return jsonResponse({ status: 'stage_updated', application: app });
+      return jsonResponse({ status: 'stage_updated', application: app }, 200, req);
     }
 
     if (action === 'ignore_suggestion' || action === 'mark_processed') {
       const email = await loadEmail();
-      if (!email) return jsonResponse({ error: 'Email not found.' }, 404);
+      if (!email) return jsonResponse({ error: 'Email not found.' }, 404, req);
       const { data: updated, error } = await supabase
         .from('job_emails')
         .update({
@@ -202,16 +203,16 @@ Deno.serve(async (req) => {
         .select('*')
         .single();
       if (error) {
-        return jsonResponse({ error: 'Failed to update email.' }, 500);
+        return jsonResponse({ error: 'Failed to update email.' }, 500, req);
       }
-      return jsonResponse({ status: 'processed', email: updated });
+      return jsonResponse({ status: 'processed', email: updated }, 200, req);
     }
 
     if (action === 'create_calendar_event') {
       const email = emailId ? await loadEmail() : null;
       const preview = body.event && typeof body.event === 'object' ? body.event : null;
       if (!preview) {
-        return jsonResponse({ error: 'event preview payload required.' }, 400);
+        return jsonResponse({ error: 'event preview payload required.' }, 400, req);
       }
 
       const title = String(preview.title ?? '').trim();
@@ -228,8 +229,7 @@ Deno.serve(async (req) => {
       if (!title || !startsAt || !endsAt) {
         return jsonResponse(
           { error: 'title, starts_at, and ends_at are required.' },
-          400,
-        );
+          400, req);
       }
       if (!timezone || timezone.toLowerCase() === 'ambiguous') {
         return jsonResponse(
@@ -238,14 +238,12 @@ Deno.serve(async (req) => {
               'Timezone is ambiguous or missing. Confirm timezone before creating the event.',
             code: 'timezone_ambiguous',
           },
-          400,
-        );
+          400, req);
       }
       if (!applicationId) {
         return jsonResponse(
           { error: 'application_id is required to create an interview event.' },
-          400,
-        );
+          400, req);
       }
 
       const { data: app } = await supabase
@@ -254,7 +252,7 @@ Deno.serve(async (req) => {
         .eq('id', applicationId)
         .maybeSingle();
       if (!app || app.user_id !== userId) {
-        return jsonResponse({ error: 'Application not found.' }, 404);
+        return jsonResponse({ error: 'Application not found.' }, 404, req);
       }
 
       const admin = adminClient();
@@ -272,8 +270,7 @@ Deno.serve(async (req) => {
                 ? err.message
                 : 'Google session invalid. Reconnect Google.',
           },
-          401,
-        );
+          401, req);
       }
 
       const descriptionParts = [
@@ -290,7 +287,23 @@ Deno.serve(async (req) => {
         location: meetingUrl || undefined,
       };
 
-      const calRes = await fetch(
+      const calLease = await tryAcquireRateLimit(
+        supabase,
+        `calendar-create:${applicationId}:${startsAt}:${title.slice(0, 80)}`,
+        30,
+      );
+      if (!calLease) {
+        return jsonResponse(
+          {
+            error:
+              'A calendar create for this interview is already in progress or was just created. Wait and refresh.',
+            code: 'duplicate_calendar_request',
+          },
+          409,
+          req);
+      }
+
+      const calRes = await fetchWithTimeout(
         'https://www.googleapis.com/calendar/v3/calendars/primary/events',
         {
           method: 'POST',
@@ -300,11 +313,12 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify(eventBody),
         },
+        GOOGLE_TIMEOUT_MS,
       );
 
       if (!calRes.ok) {
         console.error('calendar_create_failed', calRes.status);
-        return jsonResponse({ error: 'Google Calendar API failed.' }, 502);
+        return jsonResponse({ error: 'Google Calendar API failed.' }, 502, req);
       }
       const created = await calRes.json();
 
@@ -365,15 +379,15 @@ Deno.serve(async (req) => {
         event: eventRow,
         google_event_id: created.id,
         html_link: created.htmlLink ?? null,
-      });
+      }, 200, req);
     }
 
-    return jsonResponse({ error: `Unknown action: ${action}` }, 400);
+    return jsonResponse({ error: `Unknown action: ${action}` }, 400, req);
   } catch (error) {
     console.error(
       'hiring_email_action_unhandled',
       error instanceof Error ? error.message : error,
     );
-    return jsonResponse({ error: 'Unexpected server error.' }, 500);
+    return jsonResponse({ error: 'Unexpected server error.' }, 500, req);
   }
 });

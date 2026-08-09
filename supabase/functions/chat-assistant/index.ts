@@ -1,5 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { recordAiGeneration } from '../_shared/ai-observability.ts';
+import { corsHeadersFor } from '../_shared/cors.ts';
+import { fetchWithTimeout, OPENAI_TIMEOUT_MS } from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
 const GENERATION_VERSION = 'v1-assistant';
@@ -32,22 +35,16 @@ STYLE
 - Use short sections or bullets when useful.
 - Label assumptions clearly.`;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-};
-
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
   });
 }
 
-function sseHeaders() {
+function sseHeaders(req?: Request) {
   return {
-    ...corsHeaders,
+    ...corsHeadersFor(req),
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
@@ -89,7 +86,7 @@ function buildLabeled(sections: Record<string, string>): string {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   try {
@@ -195,6 +192,22 @@ Deno.serve(async (req) => {
           429,
         );
       }
+    }
+
+    // Atomic lease — blocks concurrent + rapid duplicate turns
+    const leaseOk = await tryAcquireRateLimit(
+      supabase,
+      `chat-assistant:${conversationId}`,
+      Math.max(RATE_LIMIT_SECONDS, 3),
+    );
+    if (!leaseOk) {
+      return jsonResponse(
+        {
+          error:
+            'Please wait a moment before sending another message.',
+        },
+        429,
+      );
     }
 
     // Soft daily cap (assistant messages today)
@@ -401,21 +414,25 @@ Deno.serve(async (req) => {
     const model = DEFAULT_MODEL;
     const started = Date.now();
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json',
+    const openaiRes = await fetchWithTimeout(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.4,
+          max_tokens: MAX_OUTPUT_TOKENS,
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: openaiMessages,
+        }),
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.4,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: openaiMessages,
-      }),
-    });
+      OPENAI_TIMEOUT_MS,
+    );
 
     if (!openaiRes.ok || !openaiRes.body) {
       const status = openaiRes.status;
@@ -632,7 +649,7 @@ Deno.serve(async (req) => {
       },
     });
 
-    return new Response(stream, { headers: sseHeaders() });
+    return new Response(stream, { headers: sseHeaders(req) });
   } catch (error) {
     console.error('unhandled', error instanceof Error ? error.message : error);
     return jsonResponse({ error: 'Unexpected server error.' }, 500);

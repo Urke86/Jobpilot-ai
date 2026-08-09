@@ -4,7 +4,10 @@ import {
   decryptRefreshToken,
   encryptTokenPair,
 } from './google-crypto.ts';
+import { fetchWithTimeout, GOOGLE_TIMEOUT_MS } from './fetch-timeout.ts';
+import { corsHeaders, corsHeadersFor } from './cors.ts';
 
+export { corsHeaders, corsHeadersFor };
 export const GOOGLE_SCOPES = [
   'openid',
   'email',
@@ -12,16 +15,10 @@ export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
 ] as const;
 
-export const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-};
-
-export function jsonResponse(body: unknown, status = 200): Response {
+export function jsonResponse(body: unknown, status = 200, req?: Request): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -42,17 +39,21 @@ export async function requireUserClient(req: Request): Promise<{
 }> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const headers = {
+    ...corsHeadersFor(req),
+    'Content-Type': 'application/json',
+  };
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Response(JSON.stringify({ error: 'Incomplete environment.' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers,
     });
   }
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     throw new Response(JSON.stringify({ error: 'Authentication required.' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers,
     });
   }
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -66,7 +67,7 @@ export async function requireUserClient(req: Request): Promise<{
   if (error || !user) {
     throw new Response(JSON.stringify({ error: 'Authentication required.' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers,
     });
   }
   return {
@@ -160,11 +161,15 @@ export async function exchangeGoogleCode(code: string): Promise<{
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
   });
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
+  const res = await fetchWithTimeout(
+    'https://oauth2.googleapis.com/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    },
+    GOOGLE_TIMEOUT_MS,
+  );
   if (!res.ok) {
     console.error('google_token_exchange_failed', res.status);
     throw new Error('Google token exchange failed.');
@@ -184,11 +189,15 @@ export async function refreshGoogleAccessToken(refreshToken: string): Promise<{
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
   });
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
+  const res = await fetchWithTimeout(
+    'https://oauth2.googleapis.com/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    },
+    GOOGLE_TIMEOUT_MS,
+  );
   if (!res.ok) {
     console.error('google_refresh_failed', res.status);
     throw new Error('Google token refresh failed. Reconnect Google.');
@@ -197,12 +206,34 @@ export async function refreshGoogleAccessToken(refreshToken: string): Promise<{
 }
 
 export async function fetchGoogleUserEmail(accessToken: string): Promise<string | null> {
-  const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const res = await fetchWithTimeout(
+    'https://www.googleapis.com/oauth2/v2/userinfo',
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+    GOOGLE_TIMEOUT_MS,
+  );
   if (!res.ok) return null;
   const json = await res.json();
   return typeof json.email === 'string' ? json.email : null;
+}
+
+export async function revokeGoogleToken(token: string): Promise<void> {
+  try {
+    await fetchWithTimeout(
+      `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+      GOOGLE_TIMEOUT_MS,
+    );
+  } catch (err) {
+    console.error(
+      'google_revoke_failed',
+      err instanceof Error ? err.message : 'unknown',
+    );
+  }
 }
 
 export async function getValidGoogleAccessToken(

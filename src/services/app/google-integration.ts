@@ -88,7 +88,7 @@ export async function getGoogleIntegrationStatus(): Promise<GoogleIntegrationSta
   const supabase = requireSupabaseClient();
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('user_integrations')
+    .from('user_integrations_public')
     .select(
       'provider_account_email, scopes, expires_at, metadata, created_at',
     )

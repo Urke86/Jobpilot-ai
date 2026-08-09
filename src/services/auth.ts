@@ -117,24 +117,42 @@ export async function signUp({
   email,
   password,
   fullName,
-}: SignUpInput): Promise<{ user: User | null; session: Session | null }> {
+}: SignUpInput): Promise<{
+  user: User | null;
+  session: Session | null;
+  needsEmailConfirmation: boolean;
+}> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
     options: {
       data: { full_name: fullName.trim() },
+      emailRedirectTo:
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/login`
+          : undefined,
     },
   });
 
   if (error) throw mapAuthError(error);
+
+  // Supabase may return an empty identities array when the email is already registered.
+  const identities = data.user?.identities ?? null;
+  if (data.user && Array.isArray(identities) && identities.length === 0) {
+    throw new Error('An account with this email already exists.');
+  }
 
   // Only ensure profile when a session exists (email confirmation may defer this).
   if (data.session?.user) {
     await ensureProfile(fullName);
   }
 
-  return { user: data.user, session: data.session };
+  return {
+    user: data.user,
+    session: data.session,
+    needsEmailConfirmation: Boolean(data.user) && !data.session,
+  };
 }
 
 export async function signIn({
@@ -154,6 +172,18 @@ export async function signIn({
 export async function signOut(): Promise<void> {
   const supabase = requireSupabaseClient();
   const { error } = await supabase.auth.signOut();
+  if (error) throw mapAuthError(error);
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const supabase = requireSupabaseClient();
+  const redirectTo =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/login`
+      : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo,
+  });
   if (error) throw mapAuthError(error);
 }
 

@@ -1,6 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@3.23.8';
 import { recordAiGeneration } from '../_shared/ai-observability.ts';
+import { corsHeadersFor } from '../_shared/cors.ts';
+import { fetchWithTimeout, OPENAI_TIMEOUT_MS } from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const ANALYSIS_VERSION = 'v1-structured';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
@@ -167,16 +170,13 @@ const jsonSchema = {
   },
 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-jobpilot-ingest-secret',
-};
-
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: {
+      ...corsHeadersFor(req),
+      'Content-Type': 'application/json',
+    },
   });
 }
 
@@ -242,7 +242,7 @@ function buildUserPayload(input: {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   const startedAt = Date.now();
@@ -309,16 +309,27 @@ Deno.serve(async (req) => {
         );
       }
       const allowRaw = Deno.env.get('INGESTION_ALLOWED_USER_IDS')?.trim();
-      if (allowRaw) {
-        const allowed = new Set(
-          allowRaw.split(',').map((s) => s.trim()).filter(Boolean),
+      const allowed = new Set(
+        (allowRaw ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
+      if (allowed.size === 0) {
+        console.error('ingestion_allowlist_missing');
+        return jsonResponse(
+          {
+            error:
+              'INGESTION_ALLOWED_USER_IDS must be configured for automation auth.',
+          },
+          503,
         );
-        if (!allowed.has(target)) {
-          return jsonResponse(
-            { error: 'target_user_id is not allowlisted for automation.' },
-            403,
-          );
-        }
+      }
+      if (!allowed.has(target)) {
+        return jsonResponse(
+          { error: 'target_user_id is not allowlisted for automation.' },
+          403,
+        );
       }
       actingUserId = target;
       supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -373,24 +384,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: recent } = await supabase
-      .from('job_analysis')
-      .select('id, created_at')
-      .eq('job_id', jobId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (recent?.created_at) {
-      const ageMs = Date.now() - new Date(recent.created_at).getTime();
-      if (ageMs < RATE_LIMIT_SECONDS * 1000) {
-        return jsonResponse(
-          {
-            error: `Please wait ${RATE_LIMIT_SECONDS} seconds before re-analyzing.`,
-          },
-          429,
-        );
-      }
+    const leaseOk = await tryAcquireRateLimit(
+      supabase,
+      `analyze-job:${jobId}`,
+      RATE_LIMIT_SECONDS,
+      actingUserId,
+    );
+    if (!leaseOk) {
+      return jsonResponse(
+        {
+          error: `Please wait ${RATE_LIMIT_SECONDS} seconds before re-analyzing.`,
+        },
+        429,
+      );
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -410,7 +416,7 @@ Deno.serve(async (req) => {
     const userPayload = buildUserPayload({ profile, job });
 
     const openaiStarted = Date.now();
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openaiRes = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${openaiKey}`,
@@ -432,7 +438,7 @@ Deno.serve(async (req) => {
           },
         },
       }),
-    });
+    }, OPENAI_TIMEOUT_MS);
 
     if (!openaiRes.ok) {
       const errText = await openaiRes.text();

@@ -488,11 +488,67 @@ export function computeAnalyticsSummary(
 }
 
 export async function getAiAnalyticsSummary(): Promise<AiAnalyticsSummary> {
+  const supabase = requireSupabaseClient();
+  await requireUserId();
+
+  const { data, error } = await supabase.rpc('ai_analytics_summary');
+  if (error) throw error;
+
+  const r = (data ?? {}) as Record<string, unknown>;
   const [generations, evaluations] = await Promise.all([
-    listAiGenerations(500),
-    listAiEvaluations(200),
+    listAiGenerations(100),
+    listAiEvaluations(50),
   ]);
-  return computeAnalyticsSummary(generations, evaluations);
+  const local = computeAnalyticsSummary(generations, evaluations);
+
+  const asBuckets = (v: unknown): SpendBucket[] =>
+    Array.isArray(v)
+      ? (v as SpendBucket[]).map((b) => ({
+          key: String(b.key),
+          spend: num(b.spend),
+          count: num(b.count),
+        }))
+      : local.spendByFeature;
+
+  const asSeries = (v: unknown): SeriesPoint[] =>
+    Array.isArray(v)
+      ? (v as SeriesPoint[]).map((p) => ({
+          date: String(p.date),
+          spend: num(p.spend),
+          latency_ms: num(p.latency_ms),
+          count: num(p.count),
+        }))
+      : local.series;
+
+  return {
+    ...local,
+    totalSpend: num(r.totalSpend ?? local.totalSpend),
+    monthlySpend: num(r.monthlySpend ?? local.monthlySpend),
+    weeklySpend: num(r.weeklySpend ?? local.weeklySpend),
+    dailySpend: num(r.dailySpend ?? local.dailySpend),
+    totalGenerations: num(r.totalGenerations ?? local.totalGenerations),
+    successCount: num(r.successCount ?? local.successCount),
+    failureCount: num(r.failureCount ?? local.failureCount),
+    successRate: num(r.successRate ?? local.successRate),
+    avgLatencyMs: num(r.avgLatencyMs ?? local.avgLatencyMs),
+    avgInputTokens: num(r.avgInputTokens ?? local.avgInputTokens),
+    avgOutputTokens: num(r.avgOutputTokens ?? local.avgOutputTokens),
+    avgCost: num(r.avgCost ?? local.avgCost),
+    maxCost: num(r.maxCost ?? local.maxCost),
+    mostExpensiveFeature:
+      typeof r.mostExpensiveFeature === 'string'
+        ? r.mostExpensiveFeature
+        : local.mostExpensiveFeature,
+    mostUsedModel:
+      typeof r.mostUsedModel === 'string' ? r.mostUsedModel : local.mostUsedModel,
+    spendByFeature: asBuckets(r.spendByFeature),
+    spendByModel: Array.isArray(r.spendByModel)
+      ? asBuckets(r.spendByModel)
+      : local.spendByModel,
+    series: asSeries(r.series),
+    avgEvalScore:
+      r.avgEvalScore != null ? num(r.avgEvalScore) : local.avgEvalScore,
+  };
 }
 
 /**

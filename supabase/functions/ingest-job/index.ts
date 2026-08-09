@@ -1,5 +1,10 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.58.0';
 import { z } from 'npm:zod@3.23.8';
+import { corsHeadersFor } from '../_shared/cors.ts';
+import {
+  ANALYZE_PROXY_TIMEOUT_MS,
+  fetchWithTimeout,
+} from '../_shared/fetch-timeout.ts';
 
 const AUTOMATION_VERSION = 'ingest-v1';
 const DEDUPE_WINDOW_DAYS = 30;
@@ -42,16 +47,13 @@ type IngestResult = {
   analysis_error?: string | null;
 };
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-jobpilot-ingest-secret',
-};
-
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, req?: Request): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: {
+      ...corsHeadersFor(req),
+      'Content-Type': 'application/json',
+    },
   });
 }
 
@@ -251,15 +253,38 @@ function timingSafeEqual(a: string, b: string): boolean {
   return out === 0;
 }
 
-function parseAllowedUserIds(): Set<string> | null {
+function parseAllowedUserIds(): Set<string> {
   const raw = Deno.env.get('INGESTION_ALLOWED_USER_IDS')?.trim();
-  if (!raw) return null;
+  if (!raw) {
+    return new Set();
+  }
   return new Set(
     raw
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
   );
+}
+
+function assertAutomationAllowlist(targetUserId: string): Response | null {
+  const allowed = parseAllowedUserIds();
+  if (allowed.size === 0) {
+    console.error('ingestion_allowlist_missing');
+    return jsonResponse(
+      {
+        error:
+          'INGESTION_ALLOWED_USER_IDS must be configured for automation auth.',
+      },
+      503,
+    );
+  }
+  if (!allowed.has(targetUserId)) {
+    return jsonResponse(
+      { error: 'target_user_id is not allowlisted for automation.' },
+      403,
+    );
+  }
+  return null;
 }
 
 function envAutoAnalyzeDefault(): boolean {
@@ -378,37 +403,50 @@ async function triggerAnalyzeJob(params: {
   targetUserId: string;
 }): Promise<{ ok: boolean; analysisId: string | null; error: string | null }> {
   try {
-    const res = await fetch(`${params.supabaseUrl}/functions/v1/analyze-job`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${params.anonKey}`,
-        apikey: params.anonKey,
-        'Content-Type': 'application/json',
-        'x-jobpilot-ingest-secret': params.ingestSecret,
+    const res = await fetchWithTimeout(
+      `${params.supabaseUrl}/functions/v1/analyze-job`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${params.anonKey}`,
+          apikey: params.anonKey,
+          'Content-Type': 'application/json',
+          'x-jobpilot-ingest-secret': params.ingestSecret,
+        },
+        body: JSON.stringify({
+          jobId: params.jobId,
+          target_user_id: params.targetUserId,
+        }),
       },
-      body: JSON.stringify({
-        jobId: params.jobId,
-        target_user_id: params.targetUserId,
-      }),
-    });
+      ANALYZE_PROXY_TIMEOUT_MS,
+    );
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       return {
         ok: false,
         analysisId: null,
-        error: typeof json.error === 'string' ? json.error : `analyze failed (${res.status})`,
+        error:
+          typeof json.error === 'string'
+            ? json.error
+            : `analyze failed (${res.status})`,
       };
     }
     return {
       ok: true,
-      analysisId: typeof json?.analysis?.id === 'string' ? json.analysis.id : null,
+      analysisId:
+        typeof json?.analysis?.id === 'string' ? json.analysis.id : null,
       error: null,
     };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : 'analyze request failed';
+    const sanitized = /timed out/i.test(msg)
+      ? 'Analysis timed out. Job was saved; retry analysis later.'
+      : 'Analysis request failed. Job was saved; retry analysis later.';
+    console.error('analyze_proxy_error', /timed out/i.test(msg) ? 'timeout' : 'error');
     return {
       ok: false,
       analysisId: null,
-      error: err instanceof Error ? err.message : 'analyze request failed',
+      error: sanitized,
     };
   }
 }
@@ -582,7 +620,7 @@ function extractItems(body: Record<string, unknown>): unknown[] {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   const startedAt = Date.now();
@@ -640,13 +678,8 @@ Deno.serve(async (req) => {
           400,
         );
       }
-      const allowed = parseAllowedUserIds();
-      if (allowed && !allowed.has(target)) {
-        return jsonResponse(
-          { error: 'target_user_id is not allowlisted for automation.' },
-          403,
-        );
-      }
+      const allowErr = assertAutomationAllowlist(target);
+      if (allowErr) return allowErr;
       userId = target;
       client = createClient(supabaseUrl, serviceRoleKey, {
         auth: { persistSession: false, autoRefreshToken: false },
@@ -737,7 +770,7 @@ Deno.serve(async (req) => {
               : '';
           if (desc.trim().length >= MIN_ANALYZE_DESCRIPTION) {
             try {
-              const res = await fetch(
+              const res = await fetchWithTimeout(
                 `${supabaseUrl}/functions/v1/analyze-job`,
                 {
                   method: 'POST',
@@ -748,6 +781,7 @@ Deno.serve(async (req) => {
                   },
                   body: JSON.stringify({ jobId: one.job_id }),
                 },
+                ANALYZE_PROXY_TIMEOUT_MS,
               );
               const json = await res.json().catch(() => ({}));
               one.analyzed = res.ok;
@@ -760,8 +794,15 @@ Deno.serve(async (req) => {
                   : `analyze failed (${res.status})`;
             } catch (err) {
               one.analyzed = false;
-              one.analysis_error =
+              const msg =
                 err instanceof Error ? err.message : 'analyze failed';
+              one.analysis_error = /timed out/i.test(msg)
+                ? 'Analysis timed out. Job was saved; retry analysis later.'
+                : 'Analysis request failed. Job was saved; retry analysis later.';
+              console.error(
+                'analyze_proxy_error',
+                /timed out/i.test(msg) ? 'timeout' : 'error',
+              );
             }
           }
         }

@@ -1,6 +1,6 @@
 import {
   adminClient,
-  corsHeaders,
+  corsHeadersFor,
   encryptTokenPair,
   exchangeGoogleCode,
   fetchGoogleUserEmail,
@@ -18,7 +18,7 @@ function appRedirect(pathQuery: string): Response {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   try {
@@ -47,10 +47,37 @@ Deno.serve(async (req) => {
 
     const tokens = await exchangeGoogleCode(code);
     const email = await fetchGoogleUserEmail(tokens.access_token);
+
+    const admin = adminClient();
+    const { data: existing } = await admin
+      .from('user_integrations')
+      .select('refresh_token_cipher, metadata')
+      .eq('user_id', userId)
+      .eq('provider', 'google')
+      .maybeSingle();
+
+    // S2: Google often omits refresh_token on reconnect — preserve prior cipher.
+    const refreshToStore =
+      typeof tokens.refresh_token === 'string' && tokens.refresh_token.length > 0
+        ? tokens.refresh_token
+        : null;
+
     const packed = await encryptTokenPair(
       tokens.access_token,
-      tokens.refresh_token ?? null,
+      refreshToStore,
     );
+
+    let refreshCipher = packed.refresh_token_cipher;
+    if (!refreshToStore && existing?.refresh_token_cipher) {
+      refreshCipher = existing.refresh_token_cipher;
+    }
+    if (!refreshCipher) {
+      console.error('oauth_missing_refresh_token');
+      return appRedirect(
+        '/settings?tab=integrations&google=error&reason=missing_refresh',
+      );
+    }
+
     const expiresAt = new Date(
       Date.now() + (tokens.expires_in ?? 3600) * 1000,
     ).toISOString();
@@ -59,21 +86,31 @@ Deno.serve(async (req) => {
       .split(/\s+/)
       .filter(Boolean);
 
-    const admin = adminClient();
+    const prevMeta =
+      existing?.metadata && typeof existing.metadata === 'object'
+        ? (existing.metadata as Record<string, unknown>)
+        : {};
+
     const { error } = await admin.from('user_integrations').upsert(
       {
         user_id: userId,
         provider: 'google',
         provider_account_email: email,
         access_token_cipher: packed.access_token_cipher,
-        refresh_token_cipher: packed.refresh_token_cipher,
+        refresh_token_cipher: refreshCipher,
         token_iv: packed.token_iv,
         scopes,
         expires_at: expiresAt,
         metadata: {
-          connected_at: new Date().toISOString(),
+          ...prevMeta,
+          connected_at:
+            typeof prevMeta.connected_at === 'string'
+              ? prevMeta.connected_at
+              : new Date().toISOString(),
+          reconnected_at: new Date().toISOString(),
           gmail_readonly: scopes.some((s) => s.includes('gmail.readonly')),
           calendar_events: scopes.some((s) => s.includes('calendar.events')),
+          refresh_preserved: !refreshToStore && Boolean(existing?.refresh_token_cipher),
         },
       },
       { onConflict: 'user_id,provider' },

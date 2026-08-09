@@ -883,10 +883,32 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      user_integrations_public: {
+        Row: {
+          id: string
+          user_id: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email: string | null
+          scopes: string[]
+          expires_at: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Relationships: []
+      }
     }
     Functions: {
       current_user_id: { Args: never; Returns: string }
+      try_acquire_rate_limit: {
+        Args: {
+          p_lease_key: string
+          p_ttl_seconds: number
+          p_user_id?: string | null
+        }
+        Returns: boolean
+      }
+      ai_analytics_summary: { Args: never; Returns: Json }
     }
     Enums: {
       activity_entity_type:

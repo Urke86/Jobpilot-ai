@@ -29,7 +29,7 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   signIn: (input: SignInInput) => Promise<void>;
-  signUp: (input: SignUpInput) => Promise<void>;
+  signUp: (input: SignUpInput) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -117,14 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applySession]);
 
   const signUp = useCallback(async (input: SignUpInput) => {
-    const { session: nextSession } = await authSignUp(input);
+    const { session: nextSession, needsEmailConfirmation } =
+      await authSignUp(input);
     if (nextSession) {
       await applySession(nextSession);
-    } else {
-      // Email confirmation may leave session null; still refresh if a session appears.
-      const current = await fetchSession();
-      await applySession(current);
     }
+    return { needsEmailConfirmation };
   }, [applySession]);
 
   const signOut = useCallback(async () => {

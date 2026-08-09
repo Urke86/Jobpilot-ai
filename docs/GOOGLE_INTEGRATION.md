@@ -178,3 +178,14 @@ JOBPILOT_APP_URL=https://your-app-origin
 - Real mailbox mail in this account was mostly prefilter/unrelated; hiring rows for C/E/G were validated with controlled inbox fixtures plus live sync/classification path.
 - After Disconnect, reconnect via Settings → Integrations → **Connect Google** when needed.
 - No OAuth tokens, ciphertexts, or secrets were logged during QA.
+
+## Phase 5A.3 gate note
+
+Interactive G1–G7 must be re-confirmed on a controlled Google test account before limited/open launch that markets Gmail/Calendar. Exact click path: `docs/PHASE5A3_PRODUCTION_GATE.md` §1.
+
+Hardening since 4D:
+
+- Refresh token preserved on reconnect when Google omits a new refresh (S2).
+- Client cipher columns revoked; status via `user_integrations_public`.
+- CORS allowlist (no `*` echo of unknown origins).
+- Disconnect removes integration row and attempts token revoke.

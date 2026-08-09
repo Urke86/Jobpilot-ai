@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 import {
   adminClient,
-  corsHeaders,
+  corsHeadersFor,
   getValidGoogleAccessToken,
   jsonResponse,
   requireUserClient,
@@ -12,6 +12,12 @@ import {
   looksHiringRelated,
 } from '../_shared/email-classify.ts';
 import { recordAiGeneration } from '../_shared/ai-observability.ts';
+import {
+  fetchWithTimeout,
+  GOOGLE_TIMEOUT_MS,
+  GMAIL_SYNC_BUDGET_MS,
+} from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const MAX_MESSAGES = 25;
 const LOOKBACK_DAYS = 14;
@@ -247,13 +253,13 @@ async function matchApplication(
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
   const started = Date.now();
   try {
     if (req.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
+      return jsonResponse({ error: 'Method not allowed' }, 405, req);
     }
 
     let userId: string;
@@ -268,7 +274,7 @@ Deno.serve(async (req) => {
     const openaiKey = Deno.env.get('OPENAI_API_KEY')?.trim();
     const model = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
 
-    // Rate limit: last sync in metadata
+    // Rate limit: atomic lease (not soft metadata cooldown)
     const { data: integration } = await supabase
       .from('user_integrations')
       .select('id, metadata, updated_at')
@@ -277,21 +283,25 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!integration) {
-      return jsonResponse({ error: 'Connect Google before syncing Gmail.' }, 400);
+      return jsonResponse({ error: 'Connect Google before syncing Gmail.' }, 400, req);
     }
 
     const meta = (integration.metadata ?? {}) as Record<string, unknown>;
-    const lastSync = typeof meta.last_sync_at === 'string'
-      ? new Date(meta.last_sync_at).getTime()
-      : 0;
-    if (lastSync && Date.now() - lastSync < SYNC_COOLDOWN_SECONDS * 1000) {
+    const leaseOk = await tryAcquireRateLimit(
+      supabase,
+      'gmail-sync',
+      SYNC_COOLDOWN_SECONDS,
+    );
+    if (!leaseOk) {
       return jsonResponse(
         {
           error: `Please wait ${SYNC_COOLDOWN_SECONDS}s between Gmail syncs.`,
         },
         429,
-      );
+        req);
     }
+
+    const syncDeadline = Date.now() + GMAIL_SYNC_BUDGET_MS;
 
     const admin = adminClient();
     let googleAccess: string;
@@ -309,7 +319,7 @@ Deno.serve(async (req) => {
               : 'Google session invalid. Reconnect Google.',
         },
         401,
-      );
+        req);
     }
 
     const after = Math.floor(
@@ -320,18 +330,22 @@ Deno.serve(async (req) => {
 
     const listUrl =
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${MAX_MESSAGES}&q=${encodeURIComponent(q)}`;
-    const listRes = await fetch(listUrl, {
-      headers: { Authorization: `Bearer ${googleAccess}` },
-    });
+    const listRes = await fetchWithTimeout(
+      listUrl,
+      {
+        headers: { Authorization: `Bearer ${googleAccess}` },
+      },
+      GOOGLE_TIMEOUT_MS,
+    );
     if (!listRes.ok) {
       console.error('gmail_list_failed', listRes.status);
       if (listRes.status === 401 || listRes.status === 403) {
         return jsonResponse(
           { error: 'Gmail access denied. Reconnect Google with Gmail permission.' },
           403,
-        );
+          req);
       }
-      return jsonResponse({ error: 'Gmail API failed.' }, 502);
+      return jsonResponse({ error: 'Gmail API failed.' }, 502, req);
     }
     const listJson = await listRes.json();
     const messageRefs = (listJson.messages ?? []) as { id: string; threadId: string }[];
@@ -356,6 +370,10 @@ Deno.serve(async (req) => {
     let classifyFailed = 0;
 
     for (const ref of messageRefs) {
+      if (Date.now() > syncDeadline) {
+        console.error('gmail_sync_budget_exhausted');
+        break;
+      }
       const { data: existing } = await supabase
         .from('job_emails')
         .select('id, classification')
@@ -368,9 +386,10 @@ Deno.serve(async (req) => {
       }
       const pendingId = existing?.classification === 'pending' ? existing.id : null;
 
-      const msgRes = await fetch(
+      const msgRes = await fetchWithTimeout(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=full`,
         { headers: { Authorization: `Bearer ${googleAccess}` } },
+        GOOGLE_TIMEOUT_MS,
       );
       if (!msgRes.ok) continue;
       const msg = await msgRes.json();
@@ -642,20 +661,23 @@ Deno.serve(async (req) => {
       },
     });
 
-    return jsonResponse({
-      status: 'ok',
-      imported,
-      classified,
-      skipped_existing: skippedExisting,
-      skipped_prefilter: skippedUnrelatedPre,
-      classify_failed: classifyFailed,
-      fetched: messageRefs.length,
-      lookback_days: LOOKBACK_DAYS,
-      max_messages: MAX_MESSAGES,
-      duration_ms: Date.now() - started,
-    });
+    return jsonResponse(
+      {
+        status: 'ok',
+        imported,
+        classified,
+        skipped_existing: skippedExisting,
+        skipped_prefilter: skippedUnrelatedPre,
+        classify_failed: classifyFailed,
+        fetched: messageRefs.length,
+        lookback_days: LOOKBACK_DAYS,
+        max_messages: MAX_MESSAGES,
+        duration_ms: Date.now() - started,
+      },
+      200,
+      req);
   } catch (error) {
     console.error('gmail_sync_unhandled', error instanceof Error ? error.message : error);
-    return jsonResponse({ error: 'Unexpected server error.' }, 500);
+    return jsonResponse({ error: 'Unexpected server error.' }, 500, req);
   }
 });

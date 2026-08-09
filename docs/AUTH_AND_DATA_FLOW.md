@@ -66,9 +66,11 @@ Dashboard, jobs, companies, and applications show intentional empty states when 
 
 ## Known limitations
 
-- Email confirmation may be autoconfirm-enabled for MVP; harden for production.
+- Email confirmation: for **local closed beta**, `mailer_autoconfirm` is **enabled** so signup works without SMTP. Set `mailer_autoconfirm=false` again before limited/open public launch (see Phase 5A.3). Signup UI handles the confirmation-required path when autoconfirm is off.
+- Password recovery: `requestPasswordReset()` redirects to `/login`; Auth `uri_allow_list` includes localhost Vite origins. Add production origin at deploy time. No dedicated forgot-password page yet.
 - Direct `supabase db push` still blocked by IPv6 on some networks.
 - AI analysis, artifacts, assistant, ingest, and Gmail classification run via Edge Functions.
-- Cross-user isolation relies on RLS; automated multi-user e2e is mostly manual API smoke.
+- Cross-user isolation relies on RLS; automated multi-user e2e is mostly API smoke.
 - Stop generation aborts the client stream; incomplete assistant rows are not persisted.
 - Live Google Connect/Sync requires Google Cloud OAuth credentials configured as Edge secrets.
+- Edge CORS uses an explicit origin allowlist (`JOBPILOT_APP_URL` + localhost); set production URL before public launch.
