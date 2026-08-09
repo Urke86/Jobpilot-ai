@@ -118,3 +118,27 @@ Not in 4C.2: LinkedIn/Indeed scraping, browser automation, Gmail/Calendar, RAG, 
 4. Global AI spend dashboards
 5. Vitest for ingest normalize/dedupe helpers
 6. Harden email confirmation / password reset
+
+## Phase 4D — Gmail + Google Calendar
+
+### What shipped
+
+- `user_integrations` (AES-GCM encrypted Google tokens), `job_emails`, `application_events`
+- `profiles.timezone`
+- Edge: `google-oauth-start`, `google-oauth-callback`, `google-disconnect`, `gmail-sync`, `hiring-email-action`
+- Settings → Integrations (connect/disconnect/status)
+- Hiring Inbox UI with human-approved stage + calendar flows
+- Docs: `docs/GOOGLE_INTEGRATION.md`
+
+### Boundaries (explicit)
+
+Not in 4D: auto-send email, auto-accept interviews, auto calendar without confirm, LinkedIn automation, browser automation, RAG, agents.
+
+### Phase 4E recommendations
+
+1. Optional draft-only Gmail compose helpers (still no auto-send) if product needs it
+2. Retention / purge policy for `job_emails`
+3. Conversation summarization for long assistant threads
+4. Global AI spend dashboards
+5. Vitest for classify schema + OAuth state helpers
+6. Harden email confirmation / password reset

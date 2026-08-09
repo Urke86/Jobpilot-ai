@@ -16,6 +16,7 @@ const ApplicationDetailPage = lazy(() => import('@/pages/ApplicationDetailPage')
 const CompaniesPage = lazy(() => import('@/pages/CompaniesPage'));
 const CompanyDetailPage = lazy(() => import('@/pages/CompanyDetailPage'));
 const AssistantPage = lazy(() => import('@/pages/AssistantPage'));
+const HiringInboxPage = lazy(() => import('@/pages/HiringInboxPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 
 function RouteSuspense({ children }: { children: React.ReactNode }) {
@@ -132,6 +133,16 @@ export default function App() {
               <RouteSuspense>
                 <ErrorBoundary fallbackTitle="Assistant failed to load">
                   <AssistantPage />
+                </ErrorBoundary>
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path={ROUTES.hiringInbox}
+            element={
+              <RouteSuspense>
+                <ErrorBoundary fallbackTitle="Hiring Inbox failed to load">
+                  <HiringInboxPage />
                 </ErrorBoundary>
               </RouteSuspense>
             }

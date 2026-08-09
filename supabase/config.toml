@@ -441,3 +441,33 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/ingest-job/deno.json"
 entrypoint = "./functions/ingest-job/index.ts"
+
+[functions.google-oauth-start]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-oauth-start/deno.json"
+entrypoint = "./functions/google-oauth-start/index.ts"
+
+[functions.google-oauth-callback]
+enabled = true
+verify_jwt = false
+import_map = "./functions/google-oauth-callback/deno.json"
+entrypoint = "./functions/google-oauth-callback/index.ts"
+
+[functions.google-disconnect]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-disconnect/deno.json"
+entrypoint = "./functions/google-disconnect/index.ts"
+
+[functions.gmail-sync]
+enabled = true
+verify_jwt = true
+import_map = "./functions/gmail-sync/deno.json"
+entrypoint = "./functions/gmail-sync/index.ts"
+
+[functions.hiring-email-action]
+enabled = true
+verify_jwt = true
+import_map = "./functions/hiring-email-action/deno.json"
+entrypoint = "./functions/hiring-email-action/index.ts"

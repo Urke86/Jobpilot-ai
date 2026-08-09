@@ -44,6 +44,8 @@ Ownership: `user_id` is always taken from `auth.getUser()` in the service layer 
 | Job analysis | view only (manual helper exists) | job detail | — | — |
 | Artifacts | service ready | application detail list | — | — |
 | Activities | auto on key actions | dashboard | — | — |
+| Google integration | OAuth connect | Settings | disconnect | — |
+| Hiring emails | gmail-sync | Hiring Inbox | link/stage/calendar (approved) | — |
 
 ## Mock → Supabase migration
 
@@ -55,10 +57,18 @@ Ownership: `user_id` is always taken from `auth.getUser()` in the service layer 
 
 Dashboard, jobs, companies, and applications show intentional empty states when the user has no rows yet.
 
+## Google integration (Phase 4D)
+
+- JobPilot Auth remains Supabase email/password (or existing providers) — Google is a **connected integration**.
+- OAuth tokens are encrypted server-side; the browser only sees connection metadata.
+- Gmail sync and Calendar create run through Edge Functions with JWT ownership checks.
+- Application stage and Calendar events change only after explicit user confirmation in Hiring Inbox.
+
 ## Known limitations
 
 - Email confirmation may be autoconfirm-enabled for MVP; harden for production.
 - Direct `supabase db push` still blocked by IPv6 on some networks.
-- AI analysis, artifacts, and streaming assistant run via Edge Functions (`analyze-job`, `generate-artifact`, `chat-assistant`).
+- AI analysis, artifacts, assistant, ingest, and Gmail classification run via Edge Functions.
 - Cross-user isolation relies on RLS; automated multi-user e2e is mostly manual API smoke.
 - Stop generation aborts the client stream; incomplete assistant rows are not persisted.
+- Live Google Connect/Sync requires Google Cloud OAuth credentials configured as Edge secrets.

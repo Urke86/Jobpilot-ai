@@ -15,6 +15,9 @@ Phase 2 schema for multi-user job search and application tracking.
 | `application_artifacts` | CV/cover letter/Q&A materials |
 | `ai_conversations` | Assistant chat threads (Phase 4C.1) |
 | `ai_messages` | Assistant messages + AI run metadata |
+| `user_integrations` | Connected providers (Google tokens encrypted) |
+| `job_emails` | Hiring-related Gmail messages (Phase 4D) |
+| `application_events` | Confirmed Calendar / interview events |
 | `activities` | Dashboard feed / audit trail |
 
 All tables use UUID PKs, `timestamptz` timestamps, and `user_id → auth.users(id)` ownership.
@@ -29,6 +32,9 @@ jobs 1──* job_analysis
 jobs 1──1 applications          (UNIQUE user_id + job_id)
 applications 1──* application_artifacts
 auth.users 1──* ai_conversations 1──* ai_messages
+auth.users 1──* user_integrations
+auth.users 1──* job_emails *──? applications
+applications 1──* application_events
 auth.users 1──* activities      (polymorphic entity_id, no FK)
 ```
 

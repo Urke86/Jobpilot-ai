@@ -15,6 +15,7 @@ export const ROUTES = {
   companies: '/companies',
   companyDetail: (id: string) => `/companies/${id}` as const,
   assistant: '/assistant',
+  hiringInbox: '/hiring-inbox',
   settings: '/settings',
 } as const;
 

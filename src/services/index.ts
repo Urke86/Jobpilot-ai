@@ -100,6 +100,23 @@ export {
 } from './app/assistant';
 
 export {
+  getGoogleIntegrationStatus,
+  startGoogleOAuth,
+  disconnectGoogle,
+  syncGmail,
+  listJobEmails,
+  getJobEmailById,
+  linkEmailToApplication,
+  acceptStageFromEmail,
+  markEmailProcessed,
+  createInterviewCalendarEvent,
+  getExtractedData,
+  type GoogleIntegrationStatus,
+  type JobEmailRecord,
+  type CalendarEventPreview,
+} from './app/google-integration';
+
+export {
   getDashboardData,
   type DashboardData,
   type DashboardStats,

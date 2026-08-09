@@ -11,8 +11,9 @@ JobPilot AI helps users discover jobs, track applications, manage companies/cont
 | UI | React 18, TypeScript, Tailwind, shadcn/ui |
 | Routing | React Router 7 |
 | Backend | Supabase Auth + PostgreSQL (RLS) |
-| AI | OpenAI via Edge Functions `analyze-job`, `generate-artifact`, `chat-assistant` |
+| AI | OpenAI via Edge Functions `analyze-job`, `generate-artifact`, `chat-assistant`, email classify |
 | Automation | n8n → Edge Function `ingest-job` (secret + target user) |
+| Integrations | Google Gmail (readonly) + Calendar events via Edge OAuth |
 
 ## Directory highlights
 
@@ -33,6 +34,11 @@ supabase/functions/
   generate-artifact/   Server-side application artifact generation
   chat-assistant/      Streaming contextual AI assistant
   ingest-job/          n8n / manual job ingestion + dedupe
+  google-oauth-start/  Begin Google OAuth (JWT)
+  google-oauth-callback/ Persist encrypted tokens
+  google-disconnect/   Revoke JobPilot Google link
+  gmail-sync/          Bounded hiring Gmail sync + classify
+  hiring-email-action/ Link / stage / calendar (user-approved)
 automation/n8n/        Exported n8n workflow JSON (no secrets)
 ```
 
@@ -44,9 +50,11 @@ Job Detail Analyze → requestJobAnalysis → analyze-job → job_analysis inser
 Application Detail Toolkit → requestArtifactGeneration → generate-artifact → application_artifacts insert
 Assistant → streamAssistantMessage → chat-assistant (SSE) → ai_messages insert
 n8n / Import UI → ingest-job → jobs + companies + activities (+ optional analyze-job)
+Settings Connect Google → google-oauth-* → user_integrations (encrypted)
+Hiring Inbox Sync → gmail-sync → job_emails → user-approved hiring-email-action
 ```
 
-See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), [AI_ARTIFACTS.md](./AI_ARTIFACTS.md), [AI_ASSISTANT.md](./AI_ASSISTANT.md), and [N8N_AUTOMATION.md](./N8N_AUTOMATION.md).
+See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.md), [AI_ANALYSIS.md](./AI_ANALYSIS.md), [AI_ARTIFACTS.md](./AI_ARTIFACTS.md), [AI_ASSISTANT.md](./AI_ASSISTANT.md), [N8N_AUTOMATION.md](./N8N_AUTOMATION.md), and [GOOGLE_INTEGRATION.md](./GOOGLE_INTEGRATION.md).
 
 ## Phase status
 
@@ -59,7 +67,8 @@ See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.m
 | 4B Application artifacts | Done |
 | 4C.1 Streaming assistant | Done |
 | 4C.2 n8n job ingestion | Done |
-| 4C.3+ Gmail / Calendar / RAG / agents | Not started |
+| 4D Gmail + Calendar | Done |
+| 4E+ send email / RAG / agents | Not started |
 
 ## Environment
 
@@ -68,7 +77,7 @@ Copy `.env.example` → `.env.local`:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-Never put the service role key or OpenAI API key in the frontend.
+Never put the service role key, OpenAI API key, Google client secret, or token encryption key in the frontend.
 
 Edge secrets (Dashboard → Edge Functions → Secrets, or CLI):
 
@@ -77,3 +86,7 @@ Edge secrets (Dashboard → Edge Functions → Secrets, or CLI):
 - `INGESTION_SECRET` (n8n ↔ ingest-job / analyze-job automation)
 - optional `INGESTION_ALLOWED_USER_IDS`
 - optional `AUTO_ANALYZE_INGESTED_JOBS` (default false)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI`
+- `GOOGLE_TOKEN_ENCRYPTION_KEY`
+- optional `GOOGLE_OAUTH_STATE_SECRET`
+- `JOBPILOT_APP_URL` (OAuth return to app)

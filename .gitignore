@@ -65,3 +65,5 @@ vite.config.ts.timestamp-*
 *.njsproj
 *.sln
 *.sw?
+
+.e2e-session.json

@@ -498,6 +498,7 @@ export type Database = {
           salary_currency: string
           salary_min: number | null
           target_roles: string[]
+          timezone: string
           updated_at: string
           user_id: string
         }
@@ -513,6 +514,7 @@ export type Database = {
           salary_currency?: string
           salary_min?: number | null
           target_roles?: string[]
+          timezone?: string
           updated_at?: string
           user_id: string
         }
@@ -528,7 +530,179 @@ export type Database = {
           salary_currency?: string
           salary_min?: number | null
           target_roles?: string[]
+          timezone?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_integrations: {
+        Row: {
+          access_token_cipher: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          metadata: Json
+          provider: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email: string | null
+          refresh_token_cipher: string | null
+          scopes: string[]
+          token_iv: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_cipher?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          provider: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email?: string | null
+          refresh_token_cipher?: string | null
+          scopes?: string[]
+          token_iv?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_cipher?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email?: string | null
+          refresh_token_cipher?: string | null
+          scopes?: string[]
+          token_iv?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      job_emails: {
+        Row: {
+          application_id: string | null
+          body_text: string | null
+          classification: Database["public"]["Enums"]["email_classification"]
+          company_id: string | null
+          confidence_score: number | null
+          created_at: string
+          extracted_data: Json
+          gmail_message_id: string
+          gmail_thread_id: string | null
+          id: string
+          job_id: string | null
+          match_status: Database["public"]["Enums"]["email_match_status"]
+          metadata: Json
+          needs_action: boolean
+          processed_at: string | null
+          received_at: string | null
+          recipients: Json
+          sender_email: string | null
+          sender_name: string | null
+          snippet: string | null
+          subject: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          application_id?: string | null
+          body_text?: string | null
+          classification?: Database["public"]["Enums"]["email_classification"]
+          company_id?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          extracted_data?: Json
+          gmail_message_id: string
+          gmail_thread_id?: string | null
+          id?: string
+          job_id?: string | null
+          match_status?: Database["public"]["Enums"]["email_match_status"]
+          metadata?: Json
+          needs_action?: boolean
+          processed_at?: string | null
+          received_at?: string | null
+          recipients?: Json
+          sender_email?: string | null
+          sender_name?: string | null
+          snippet?: string | null
+          subject?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          application_id?: string | null
+          body_text?: string | null
+          classification?: Database["public"]["Enums"]["email_classification"]
+          company_id?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          extracted_data?: Json
+          gmail_message_id?: string
+          gmail_thread_id?: string | null
+          id?: string
+          job_id?: string | null
+          match_status?: Database["public"]["Enums"]["email_match_status"]
+          metadata?: Json
+          needs_action?: boolean
+          processed_at?: string | null
+          received_at?: string | null
+          recipients?: Json
+          sender_email?: string | null
+          sender_name?: string | null
+          snippet?: string | null
+          subject?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      application_events: {
+        Row: {
+          application_id: string
+          created_at: string
+          ends_at: string | null
+          event_type: Database["public"]["Enums"]["application_event_type"]
+          external_event_id: string | null
+          id: string
+          meeting_url: string | null
+          metadata: Json
+          provider: string
+          starts_at: string | null
+          timezone: string | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          ends_at?: string | null
+          event_type?: Database["public"]["Enums"]["application_event_type"]
+          external_event_id?: string | null
+          id?: string
+          meeting_url?: string | null
+          metadata?: Json
+          provider?: string
+          starts_at?: string | null
+          timezone?: string | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          ends_at?: string | null
+          event_type?: Database["public"]["Enums"]["application_event_type"]
+          external_event_id?: string | null
+          id?: string
+          meeting_url?: string | null
+          metadata?: Json
+          provider?: string
+          starts_at?: string | null
+          timezone?: string | null
+          title?: string | null
           user_id?: string
         }
         Relationships: []
@@ -551,6 +725,9 @@ export type Database = {
         | "application_artifact"
         | "system"
         | "ai_conversation"
+        | "job_email"
+        | "user_integration"
+        | "application_event"
       activity_type:
         | "job_discovered"
         | "job_status_changed"
@@ -563,8 +740,19 @@ export type Database = {
         | "note_added"
         | "custom"
         | "assistant_started"
+        | "gmail_connected"
+        | "gmail_synced"
+        | "gmail_disconnected"
+        | "hiring_email_linked"
+        | "stage_accepted_from_email"
+        | "interview_event_created"
       ai_message_role: "user" | "assistant" | "system"
       analysis_recommendation: "apply" | "consider" | "skip"
+      application_event_type:
+        | "interview"
+        | "assessment_deadline"
+        | "follow_up"
+        | "other"
       application_stage:
         | "preparing"
         | "applied"
@@ -585,6 +773,19 @@ export type Database = {
         | "interview_answers"
         | "company_research"
         | "custom"
+      email_classification:
+        | "recruiter_outreach"
+        | "application_confirmation"
+        | "questionnaire"
+        | "assessment"
+        | "interview_invitation"
+        | "interview_followup"
+        | "rejection"
+        | "offer"
+        | "general_hiring_message"
+        | "unrelated"
+        | "pending"
+      email_match_status: "matched" | "suggested_match" | "unmatched"
       employment_type:
         | "full_time"
         | "part_time"
@@ -592,6 +793,7 @@ export type Database = {
         | "temporary"
         | "internship"
         | "unknown"
+      integration_provider: "google"
       job_status:
         | "new"
         | "analyzing"
@@ -746,6 +948,9 @@ export const Constants = {
         "application_artifact",
         "system",
         "ai_conversation",
+        "job_email",
+        "user_integration",
+        "application_event",
       ],
       activity_type: [
         "job_discovered",
@@ -759,9 +964,21 @@ export const Constants = {
         "note_added",
         "custom",
         "assistant_started",
+        "gmail_connected",
+        "gmail_synced",
+        "gmail_disconnected",
+        "hiring_email_linked",
+        "stage_accepted_from_email",
+        "interview_event_created",
       ],
       ai_message_role: ["user", "assistant", "system"],
       analysis_recommendation: ["apply", "consider", "skip"],
+      application_event_type: [
+        "interview",
+        "assessment_deadline",
+        "follow_up",
+        "other",
+      ],
       application_stage: [
         "preparing",
         "applied",
@@ -784,6 +1001,20 @@ export const Constants = {
         "company_research",
         "custom",
       ],
+      email_classification: [
+        "recruiter_outreach",
+        "application_confirmation",
+        "questionnaire",
+        "assessment",
+        "interview_invitation",
+        "interview_followup",
+        "rejection",
+        "offer",
+        "general_hiring_message",
+        "unrelated",
+        "pending",
+      ],
+      email_match_status: ["matched", "suggested_match", "unmatched"],
       employment_type: [
         "full_time",
         "part_time",
@@ -792,6 +1023,7 @@ export const Constants = {
         "internship",
         "unknown",
       ],
+      integration_provider: ["google"],
       job_status: [
         "new",
         "analyzing",

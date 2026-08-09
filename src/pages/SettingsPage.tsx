@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  CheckCircle2,
+  Link2Off,
+  Loader2,
+  LogOut,
+  Monitor,
+  Moon,
+  Sun,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState, LoadingState } from '@/components/common';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -35,7 +44,10 @@ import { REMOTE_PREFERENCE_LABELS } from '@/constants/status';
 import { useAuth, useTheme, type ThemeMode } from '@/contexts';
 import { useResource } from '@/hooks/use-resource';
 import {
+  disconnectGoogle,
   getCurrentProfile,
+  getGoogleIntegrationStatus,
+  startGoogleOAuth,
   updateCurrentProfile,
 } from '@/services';
 import type { Enums } from '@/types/database';
@@ -141,6 +153,7 @@ const jobSourceOptions = [
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const { user, profile: authProfile, signOut, refreshProfile } = useAuth();
   const {
@@ -149,10 +162,25 @@ export default function SettingsPage() {
     error,
     refetch,
   } = useResource(getCurrentProfile, []);
+  const {
+    data: google,
+    refetch: refetchGoogle,
+  } = useResource(getGoogleIntegrationStatus, []);
+
+  const tabParam = searchParams.get('tab');
+  const activeTab =
+    tabParam === 'integrations' ||
+    tabParam === 'preferences' ||
+    tabParam === 'notifications' ||
+    tabParam === 'appearance' ||
+    tabParam === 'profile'
+      ? tabParam
+      : 'profile';
 
   const [fullName, setFullName] = useState('');
   const [headline, setHeadline] = useState('');
   const [location, setLocation] = useState('');
+  const [timezone, setTimezone] = useState('UTC');
   const [targetRoles, setTargetRoles] = useState('');
   const [salaryMin, setSalaryMin] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState('EUR');
@@ -161,6 +189,7 @@ export default function SettingsPage() {
   const [masterCv, setMasterCv] = useState('');
   const [portfolioSummary, setPortfolioSummary] = useState('');
   const [saving, setSaving] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   const [preferences, setPreferences] = useState<PreferencesState>({
     remoteType: 'fully-remote',
@@ -193,6 +222,7 @@ export default function SettingsPage() {
     setFullName(source.full_name ?? '');
     setHeadline(source.headline ?? '');
     setLocation(source.location ?? '');
+    setTimezone(source.timezone || 'UTC');
     setTargetRoles((source.target_roles ?? []).join(', '));
     setSalaryMin(source.salary_min != null ? String(source.salary_min) : '');
     setSalaryCurrency(source.salary_currency || 'EUR');
@@ -204,6 +234,23 @@ export default function SettingsPage() {
   useEffect(() => {
     setAppearance((prev) => ({ ...prev, theme }));
   }, [theme]);
+
+  useEffect(() => {
+    const googleStatus = searchParams.get('google');
+    if (!googleStatus) return;
+    if (googleStatus === 'connected') {
+      toast.success('Google connected');
+      refetchGoogle();
+    } else if (googleStatus === 'error') {
+      const reason = searchParams.get('reason') || 'OAuth failed';
+      toast.error(reason);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('google');
+    next.delete('reason');
+    if (!next.get('tab')) next.set('tab', 'integrations');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, refetchGoogle]);
 
   const updatePreferences = (field: keyof PreferencesState, value: string) =>
     setPreferences((prev) => ({ ...prev, [field]: value }));
@@ -242,6 +289,7 @@ export default function SettingsPage() {
         full_name: fullName.trim() || null,
         headline: headline.trim() || null,
         location: location.trim() || null,
+        timezone: timezone.trim() || 'UTC',
         target_roles: roles,
         salary_min: min != null && Number.isFinite(min) ? min : null,
         salary_currency: salaryCurrency.trim() || 'EUR',
@@ -265,6 +313,30 @@ export default function SettingsPage() {
       navigate(ROUTES.login);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Sign out failed');
+    }
+  };
+
+  const handleConnectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const { url } = await startGoogleOAuth();
+      window.location.href = url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start Google OAuth');
+      setGoogleBusy(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      await disconnectGoogle();
+      toast.success('Google disconnected');
+      refetchGoogle();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Disconnect failed');
+    } finally {
+      setGoogleBusy(false);
     }
   };
 
@@ -292,9 +364,18 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          const next = new URLSearchParams(searchParams);
+          next.set('tab', value);
+          setSearchParams(next, { replace: true });
+        }}
+        className="space-y-6"
+      >
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
@@ -348,6 +429,18 @@ export default function SettingsPage() {
                     onChange={(e) => setLocation(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Timezone (IANA)</Label>
+                  <Input
+                    id="timezone"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    placeholder="Europe/Belgrade"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Remote preference</Label>
                   <Select
@@ -441,6 +534,94 @@ export default function SettingsPage() {
                   {saving ? 'Saving…' : 'Save Changes'}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Google</CardTitle>
+              <CardDescription>
+                Connect Gmail (read-only) and Calendar events for hiring
+                workflow. JobPilot never sends email or creates calendar events
+                without your confirmation. Tokens stay server-side encrypted.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {google?.connected ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Connected
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {google.provider_account_email ?? 'Google account'}
+                    </span>
+                  </div>
+                  <div className="grid gap-2 text-sm sm:grid-cols-2">
+                    <div className="rounded-md border p-3">
+                      <div className="font-medium">Gmail</div>
+                      <p className="text-muted-foreground">
+                        {google.gmail_readonly
+                          ? 'Read-only access granted'
+                          : 'Not granted'}
+                      </p>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <div className="font-medium">Calendar</div>
+                      <p className="text-muted-foreground">
+                        {google.calendar_events
+                          ? 'Events create (user-approved) granted'
+                          : 'Not granted'}
+                      </p>
+                    </div>
+                  </div>
+                  {google.last_sync_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Last sync:{' '}
+                      {new Date(google.last_sync_at).toLocaleString()}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" asChild>
+                      <Link to={ROUTES.hiringInbox}>Open Hiring Inbox</Link>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      disabled={googleBusy}
+                      onClick={handleDisconnectGoogle}
+                      className="gap-1.5"
+                    >
+                      {googleBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Link2Off className="h-4 w-4" />
+                      )}
+                      Disconnect
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Scopes requested: <code>gmail.readonly</code>,{' '}
+                    <code>calendar.events</code>, plus OpenID email. See{' '}
+                    <code>docs/GOOGLE_INTEGRATION.md</code>.
+                  </p>
+                  <Button
+                    disabled={googleBusy}
+                    onClick={handleConnectGoogle}
+                    className="gap-1.5"
+                  >
+                    {googleBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Connect Google
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

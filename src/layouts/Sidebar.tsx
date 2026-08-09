@@ -7,6 +7,7 @@ import {
   Send,
   Building2,
   Bot,
+  Inbox,
   Settings,
   Sparkles,
   LogOut,
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { to: ROUTES.jobs, label: 'Jobs', icon: Briefcase },
   { to: ROUTES.applications, label: 'Applications', icon: Send },
   { to: ROUTES.companies, label: 'Companies', icon: Building2 },
+  { to: ROUTES.hiringInbox, label: 'Hiring Inbox', icon: Inbox },
   { to: ROUTES.assistant, label: 'AI Assistant', icon: Bot },
   { to: ROUTES.settings, label: 'Settings', icon: Settings },
 ];
@@ -83,8 +85,8 @@ export function AiInsightsCard() {
         </span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Your jobs and applications sync to Supabase. AI insights arrive in a
-        later phase.
+        Your jobs, applications, and hiring inbox sync to Supabase with
+        privacy-conscious Google integration.
       </p>
       <NavLink
         to={ROUTES.assistant}
