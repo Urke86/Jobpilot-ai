@@ -22,8 +22,11 @@ export async function listConversations(): Promise<AiConversation[]> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('ai_conversations')
-    .select('*')
-    .order('updated_at', { ascending: false });
+    .select(
+      'id, user_id, title, context_type, context_job_id, context_application_id, created_at, updated_at',
+    )
+    .order('updated_at', { ascending: false })
+    .limit(100);
   if (error) throw error;
   return data ?? [];
 }
@@ -133,9 +136,10 @@ export async function listMessages(
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('ai_messages')
-    .select('*')
+    .select('id, conversation_id, user_id, role, content, metadata, created_at')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(200);
   if (error) throw error;
   return data ?? [];
 }

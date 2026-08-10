@@ -113,6 +113,7 @@ export default function CompanyDetailPage() {
   const {
     data: company,
     isLoading,
+    error,
     refetch: refetchCompany,
   } = useResource(
     () => (id ? getCompanyById(id) : Promise.resolve(null)),
@@ -215,6 +216,18 @@ export default function CompanyDetailPage() {
 
   if (isLoading) {
     return <LoadingState label="Loading company…" />;
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={Building2}
+        title="Could not load company"
+        description={error.message}
+        actionLabel="Back to Companies"
+        onAction={() => navigate(ROUTES.companies)}
+      />
+    );
   }
 
   if (!company) {

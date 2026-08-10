@@ -85,22 +85,30 @@ export function adminClient(): SupabaseClient {
   });
 }
 
+async function oauthStateHmacKey(): Promise<CryptoKey> {
+  const secret = Deno.env.get('GOOGLE_OAUTH_STATE_SECRET')?.trim();
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      'GOOGLE_OAUTH_STATE_SECRET must be configured (min 32 chars).',
+    );
+  }
+  // Keep prior key material derivation for in-flight state compatibility.
+  return crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret.slice(0, 32)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  );
+}
+
 export async function signOAuthState(userId: string): Promise<string> {
-  const secret = Deno.env.get('GOOGLE_OAUTH_STATE_SECRET')?.trim() ||
-    Deno.env.get('GOOGLE_TOKEN_ENCRYPTION_KEY')?.trim();
-  if (!secret) throw new Error('OAuth state secret missing.');
+  const key = await oauthStateHmacKey();
   const payload = JSON.stringify({
     uid: userId,
     n: crypto.randomUUID(),
     exp: Date.now() + 10 * 60 * 1000,
   });
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret.slice(0, 32).padEnd(32, '0')),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
   const sig = new Uint8Array(
     await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)),
   );
@@ -118,19 +126,10 @@ function b64ToBytes(b64: string): Uint8Array {
 
 export async function verifyOAuthState(state: string): Promise<string | null> {
   try {
-    const secret = Deno.env.get('GOOGLE_OAUTH_STATE_SECRET')?.trim() ||
-      Deno.env.get('GOOGLE_TOKEN_ENCRYPTION_KEY')?.trim();
-    if (!secret) return null;
+    const key = await oauthStateHmacKey();
     const [payB64, sigB64] = state.split('.');
     if (!payB64 || !sigB64) return null;
     const payload = atob(payB64);
-    const key = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(secret.slice(0, 32).padEnd(32, '0')),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify'],
-    );
     const ok = await crypto.subtle.verify(
       'HMAC',
       key,

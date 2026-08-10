@@ -93,7 +93,13 @@ Route: `/hiring-inbox`
 1. User opens “Create interview event”
 2. Preview title / times / timezone / meeting URL
 3. If timezone ambiguous → **blocked** until user confirms IANA timezone
-4. On confirm → Google Calendar insert → `application_events` row → activity
+4. On confirm → durable idempotent create (Phase 5B.1):
+   - Derive `idempotency_key` (+ optional client key) from application + schedule + title
+   - Use a deterministic Google Calendar event `id` (base32hex)
+   - If local row already exists for the key → return `already_created`
+   - `POST` Calendar; on **409** → `GET` existing event (safe retry)
+   - Persist `application_events` with `idempotency_key` (unique per user)
+   - Activity logged on first successful persist
 
 ## Privacy model
 

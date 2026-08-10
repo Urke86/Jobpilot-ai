@@ -35,11 +35,12 @@ STYLE
 - Use short sections or bullets when useful.
 - Label assumptions clearly.`;
 
-function jsonResponse(body: unknown, status = 200, req?: Request) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
-  });
+function createJsonResponse(req: Request) {
+  return (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
+    });
 }
 
 function sseHeaders(req?: Request) {
@@ -88,6 +89,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
+
+  const jsonResponse = createJsonResponse(req);
 
   try {
     if (req.method !== 'POST') {
@@ -260,12 +263,23 @@ Deno.serve(async (req) => {
         .eq('id', conversationId);
     }
 
-    // Load profile context
-    const { data: profile } = await supabase
+    // Load profile + history in parallel (independent reads).
+    const profilePromise = supabase
       .from('profiles')
       .select('*')
       .eq('user_id', user.id)
       .maybeSingle();
+    const historyPromise = supabase
+      .from('ai_messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(RECENT_MESSAGE_LIMIT);
+
+    const [{ data: profile }, { data: history }] = await Promise.all([
+      profilePromise,
+      historyPromise,
+    ]);
 
     const sections: Record<string, string> = {
       'CANDIDATE PROFILE': [
@@ -351,30 +365,31 @@ Deno.serve(async (req) => {
           `Description:\n${String(job.job_description ?? '').trim() || 'Not provided'}`,
         ].join('\n');
 
-        if (job.company_id) {
-          const { data: company } = await supabase
-            .from('companies')
+        const companyPromise = job.company_id
+          ? supabase
+              .from('companies')
+              .select('*')
+              .eq('id', job.company_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null as Record<string, unknown> | null });
+        const [{ data: company }, { data: analysis }] = await Promise.all([
+          companyPromise,
+          supabase
+            .from('job_analysis')
             .select('*')
-            .eq('id', job.company_id)
-            .maybeSingle();
-          if (company) {
-            sections['COMPANY'] = [
-              `Name: ${company.name}`,
-              `Website: ${company.website ?? 'Not provided'}`,
-              `Industry: ${company.industry ?? 'Not provided'}`,
-              `Notes: ${company.notes ?? 'Not provided'}`,
-            ].join('\n');
-          }
+            .eq('job_id', jobId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        if (company) {
+          sections['COMPANY'] = [
+            `Name: ${company.name}`,
+            `Website: ${company.website ?? 'Not provided'}`,
+            `Industry: ${company.industry ?? 'Not provided'}`,
+            `Notes: ${company.notes ?? 'Not provided'}`,
+          ].join('\n');
         }
-
-        const { data: analysis } = await supabase
-          .from('job_analysis')
-          .select('*')
-          .eq('job_id', jobId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
         if (analysis) {
           sections['LATEST JOB ANALYSIS'] = [
             `Overall score: ${analysis.overall_match_score}`,
@@ -389,13 +404,6 @@ Deno.serve(async (req) => {
     }
 
     const contextBlock = buildLabeled(sections);
-
-    const { data: history } = await supabase
-      .from('ai_messages')
-      .select('role, content')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: false })
-      .limit(RECENT_MESSAGE_LIMIT);
 
     const recent = (history ?? []).reverse();
 
@@ -437,7 +445,8 @@ Deno.serve(async (req) => {
     if (!openaiRes.ok || !openaiRes.body) {
       const status = openaiRes.status;
       console.error('openai_error', { status });
-      // Do not leave orphaned incomplete assistant messages
+      // Roll back the user turn so failed provider calls do not lock the thread.
+      await supabase.from('ai_messages').delete().eq('id', userMessage.id);
       if (status === 429) {
         return jsonResponse(
           {

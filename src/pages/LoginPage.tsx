@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import { Compass, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts';
 import { ROUTES } from '@/constants/routes';
 import { APP_NAME } from '@/constants';
+import { env } from '@/lib/env';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,9 +27,29 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+function resolvePostLoginPath(from: unknown): string {
+  if (
+    from &&
+    typeof from === 'object' &&
+    'pathname' in from &&
+    typeof (from as { pathname: unknown }).pathname === 'string'
+  ) {
+    const loc = from as { pathname: string; search?: string; hash?: string };
+    if (
+      loc.pathname &&
+      loc.pathname !== ROUTES.login &&
+      loc.pathname !== ROUTES.signup
+    ) {
+      return `${loc.pathname}${loc.search ?? ''}${loc.hash ?? ''}`;
+    }
+  }
+  return ROUTES.dashboard;
+}
+
 export default function LoginPage() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -42,9 +63,16 @@ export default function LoginPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    if (!env.isSupabaseConfigured) {
+      setFormError(
+        'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.',
+      );
+      return;
+    }
     try {
       await signIn(values);
-      navigate(ROUTES.dashboard, { replace: true });
+      const from = (location.state as { from?: unknown } | null)?.from;
+      navigate(resolvePostLoginPath(from), { replace: true });
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'Unable to sign in. Please try again.',
@@ -66,6 +94,14 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {!env.isSupabaseConfigured ? (
+            <p
+              className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              Backend is not configured. Add Supabase URL and anon key to continue.
+            </p>
+          ) : null}
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

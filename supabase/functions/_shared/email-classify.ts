@@ -146,6 +146,7 @@ ${params.contextSummary.slice(0, 4000)}`;
           { role: 'user', content: userContent },
         ],
         response_format: { type: 'json_object' },
+        max_tokens: 500,
       }),
     },
     OPENAI_TIMEOUT_MS,

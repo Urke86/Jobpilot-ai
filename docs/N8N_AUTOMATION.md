@@ -102,11 +102,14 @@ Job descriptions are not aggressively rewritten.
 
 | Rule | Outcome |
 |------|---------|
-| Same user + normalized `job_url` | `duplicate` (no insert) |
+| Same user + normalized URL (`jobs.normalized_job_url`, indexed) | `duplicate` (no insert) |
+| URL variants (tracking params / host case / trailing slash) | Collapse via `normalize_job_url` → same key |
 | No URL + same normalized title+company within **30 days** | `potential_duplicate` (no auto-merge / no insert) |
-| Unique constraint race on URL | `duplicate` |
+| Unique constraint race on normalized URL | `duplicate` |
 
-Low-confidence matches are never silently merged.
+Dedupe is **database-backed** (Phase 5B.1) — not limited by an in-memory 200-row scan.  
+Low-confidence matches are never silently merged.  
+Automation still requires `INGESTION_SECRET` + allowlisted `target_user_id` (`INGESTION_ALLOWED_USER_IDS` fail-closed) and is subject to the per-user ingest rate lease.
 
 ## Company matching
 

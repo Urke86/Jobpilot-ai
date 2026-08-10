@@ -9,6 +9,10 @@ const ANALYSIS_VERSION = 'v1-structured';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
 const MIN_DESCRIPTION_CHARS = 80;
 const RATE_LIMIT_SECONDS = 30;
+const MAX_JOB_DESCRIPTION_CHARS = 20_000;
+const MAX_CV_CHARS = 20_000;
+const MAX_PORTFOLIO_CHARS = 8_000;
+const MAX_OUTPUT_TOKENS = 2_500;
 
 const scoreSchema = z.number().int().min(0).max(100);
 
@@ -170,14 +174,21 @@ const jsonSchema = {
   },
 };
 
-function jsonResponse(body: unknown, status = 200, req?: Request) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeadersFor(req),
-      'Content-Type': 'application/json',
-    },
-  });
+function createJsonResponse(req: Request) {
+  return (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        ...corsHeadersFor(req),
+        'Content-Type': 'application/json',
+      },
+    });
+}
+
+function clipText(value: string, max: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}\n…[truncated]`;
 }
 
 function estimateCostUsd(
@@ -217,12 +228,12 @@ function buildUserPayload(input: {
     '',
     'MASTER CV',
     typeof p.master_cv_text === 'string' && p.master_cv_text.trim()
-      ? p.master_cv_text.trim()
+      ? clipText(p.master_cv_text, MAX_CV_CHARS)
       : 'Not provided',
     '',
     'PORTFOLIO',
     typeof p.portfolio_summary === 'string' && p.portfolio_summary.trim()
-      ? p.portfolio_summary.trim()
+      ? clipText(p.portfolio_summary, MAX_PORTFOLIO_CHARS)
       : 'Not provided',
     '',
     'JOB METADATA',
@@ -236,7 +247,7 @@ function buildUserPayload(input: {
     `URL: ${j.job_url ?? 'Not provided'}`,
     '',
     'JOB DESCRIPTION',
-    String(j.job_description ?? '').trim(),
+    clipText(String(j.job_description ?? ''), MAX_JOB_DESCRIPTION_CHARS),
   ].join('\n');
 }
 
@@ -245,7 +256,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
+  const jsonResponse = createJsonResponse(req);
   const startedAt = Date.now();
+  let resetJobId: string | null = null;
+  let resetClient: ReturnType<typeof createClient> | null = null;
 
   try {
     if (req.method !== 'POST') {
@@ -384,12 +398,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    const leaseOk = await tryAcquireRateLimit(
+    const leasePromise = tryAcquireRateLimit(
       supabase,
       `analyze-job:${jobId}`,
       RATE_LIMIT_SECONDS,
       actingUserId,
     );
+    const profilePromise = supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', actingUserId)
+      .maybeSingle();
+
+    const [leaseOk, profileResult] = await Promise.all([
+      leasePromise,
+      profilePromise,
+    ]);
+
     if (!leaseOk) {
       return jsonResponse(
         {
@@ -399,17 +424,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', actingUserId)
-      .maybeSingle();
-
+    const { data: profile, error: profileError } = profileResult;
     if (profileError) {
       console.error('profile_fetch_error', profileError.message);
       return jsonResponse({ error: 'Unable to load profile.' }, 500);
     }
 
+    resetJobId = jobId;
+    resetClient = supabase;
     await supabase.from('jobs').update({ status: 'analyzing' }).eq('id', jobId);
 
     const model = DEFAULT_MODEL;
@@ -425,6 +447,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model,
         temperature: 0.2,
+        max_tokens: MAX_OUTPUT_TOKENS,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPayload },
@@ -631,6 +654,19 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('unhandled', error instanceof Error ? error.message : error);
+    if (resetJobId && resetClient) {
+      try {
+        await resetClient
+          .from('jobs')
+          .update({ status: 'reviewed' })
+          .eq('id', resetJobId);
+      } catch (resetError) {
+        console.error(
+          'analyze_status_reset_failed',
+          resetError instanceof Error ? resetError.message : resetError,
+        );
+      }
+    }
     return jsonResponse({ error: 'Unexpected server error.' }, 500);
   }
 });

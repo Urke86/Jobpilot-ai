@@ -24,7 +24,13 @@ export type AppRoute =
   | typeof ROUTES.signup
   | typeof ROUTES.dashboard
   | typeof ROUTES.jobs
+  | typeof ROUTES.jobsImport
+  | ReturnType<typeof ROUTES.jobDetail>
   | typeof ROUTES.applications
+  | ReturnType<typeof ROUTES.applicationDetail>
   | typeof ROUTES.companies
+  | ReturnType<typeof ROUTES.companyDetail>
   | typeof ROUTES.assistant
-  | typeof ROUTES.settings;
+  | typeof ROUTES.hiringInbox
+  | typeof ROUTES.settings
+  | typeof ROUTES.root;

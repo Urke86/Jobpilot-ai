@@ -153,7 +153,9 @@ export async function listJobEmails(limit = 50): Promise<JobEmailRecord[]> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('job_emails')
-    .select('*')
+    .select(
+      'id, user_id, application_id, company_id, job_id, gmail_message_id, gmail_thread_id, subject, snippet, sender_email, sender_name, received_at, classification, confidence_score, match_status, needs_action, processed_at, extracted_data, metadata, recipients, created_at, updated_at',
+    )
     .order('received_at', { ascending: false, nullsFirst: false })
     .limit(limit);
   if (error) throw error;

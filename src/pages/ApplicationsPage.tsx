@@ -264,9 +264,14 @@ export default function ApplicationsPage() {
   const {
     data: applications,
     isLoading: appsLoading,
+    error: appsError,
     refetch,
   } = useResource(listApplications, []);
-  const { data: jobs, isLoading: jobsLoading } = useResource(listJobs, []);
+  const {
+    data: jobs,
+    isLoading: jobsLoading,
+    error: jobsError,
+  } = useResource(listJobs, []);
 
   const enriched = useMemo(
     () => enrichApps(applications ?? [], jobs ?? []),
@@ -288,6 +293,22 @@ export default function ApplicationsPage() {
 
   if (appsLoading || jobsLoading) {
     return <LoadingState label="Loading applications…" />;
+  }
+
+  if (appsError || jobsError) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Could not load applications"
+        description={
+          appsError?.message ??
+          jobsError?.message ??
+          'Something went wrong. Try again.'
+        }
+        actionLabel="Retry"
+        onAction={() => refetch()}
+      />
+    );
   }
 
   return (

@@ -5,6 +5,7 @@ import {
   ANALYZE_PROXY_TIMEOUT_MS,
   fetchWithTimeout,
 } from '../_shared/fetch-timeout.ts';
+import { tryAcquireRateLimit } from '../_shared/rate-limit.ts';
 
 const AUTOMATION_VERSION = 'ingest-v1';
 const DEDUPE_WINDOW_DAYS = 30;
@@ -47,14 +48,15 @@ type IngestResult = {
   analysis_error?: string | null;
 };
 
-function jsonResponse(body: unknown, status = 200, req?: Request): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeadersFor(req),
-      'Content-Type': 'application/json',
-    },
-  });
+function createJsonResponse(req: Request) {
+  return (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: {
+        ...corsHeadersFor(req),
+        'Content-Type': 'application/json',
+      },
+    });
 }
 
 function collapseWs(value: string): string {
@@ -266,7 +268,10 @@ function parseAllowedUserIds(): Set<string> {
   );
 }
 
-function assertAutomationAllowlist(targetUserId: string): Response | null {
+function assertAutomationAllowlist(
+  targetUserId: string,
+  jsonResponse: (body: unknown, status?: number) => Response,
+): Response | null {
   const allowed = parseAllowedUserIds();
   if (allowed.size === 0) {
     console.error('ingestion_allowlist_missing');
@@ -345,24 +350,34 @@ async function findUrlDuplicate(
   userId: string,
   jobUrl: string,
 ): Promise<{ id: string; company_id: string | null } | null> {
+  // Prefer DB-normalized key (trigger/SQL). Fall back to exact job_url for
+  // any pre-migration rows that were not backfilled onto a unique slot.
   const { data, error } = await client
     .from('jobs')
-    .select('id, company_id, job_url')
+    .select('id, company_id')
     .eq('user_id', userId)
-    .not('job_url', 'is', null)
-    .limit(200);
+    .eq('normalized_job_url', jobUrl)
+    .maybeSingle();
 
   if (error) {
     console.error('url_dedupe_error', error.message);
     throw new Error('Unable to check duplicates.');
   }
+  if (data) return { id: data.id, company_id: data.company_id };
 
-  const target = jobUrl.toLowerCase();
-  const hit = (data ?? []).find((row) => {
-    const n = normalizeJobUrl(row.job_url);
-    return n != null && n.toLowerCase() === target;
-  });
-  return hit ? { id: hit.id, company_id: hit.company_id } : null;
+  const { data: byExact, error: exactError } = await client
+    .from('jobs')
+    .select('id, company_id')
+    .eq('user_id', userId)
+    .eq('job_url', jobUrl)
+    .maybeSingle();
+
+  if (exactError) {
+    console.error('url_dedupe_exact_error', exactError.message);
+    throw new Error('Unable to check duplicates.');
+  }
+
+  return byExact ? { id: byExact.id, company_id: byExact.company_id } : null;
 }
 
 async function findTitleCompanyRecent(
@@ -520,6 +535,8 @@ async function ingestOne(
     company_name_snapshot: company.name,
     job_title: job.job_title,
     job_url: job.job_url,
+    // Trigger also sets this; explicit value keeps Edge + DB semantics aligned.
+    normalized_job_url: job.job_url,
     source: job.source,
     location: job.location,
     remote_scope: job.remote_scope,
@@ -623,6 +640,7 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
+  const jsonResponse = createJsonResponse(req);
   const startedAt = Date.now();
 
   try {
@@ -678,7 +696,7 @@ Deno.serve(async (req) => {
           400,
         );
       }
-      const allowErr = assertAutomationAllowlist(target);
+      const allowErr = assertAutomationAllowlist(target, jsonResponse);
       if (allowErr) return allowErr;
       userId = target;
       client = createClient(supabaseUrl, serviceRoleKey, {
@@ -702,6 +720,23 @@ Deno.serve(async (req) => {
       }
       // Ignore any caller-supplied user ids on the JWT path
       userId = user.id;
+    }
+
+    const ingestLease = await tryAcquireRateLimit(
+      client,
+      `ingest-job:${userId}`,
+      15,
+      userId,
+    );
+    if (!ingestLease) {
+      return jsonResponse(
+        {
+          error:
+            'Ingestion rate limit reached. Wait a few seconds and retry.',
+          code: 'rate_limited',
+        },
+        429,
+      );
     }
 
     const items = extractItems(body);

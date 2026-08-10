@@ -111,6 +111,9 @@ export default function AssistantPage() {
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastFailedRef = useRef<string | null>(null);
+  const streamBufferRef = useRef('');
+  const streamFlushRafRef = useRef<number | null>(null);
+  const stickToBottomRef = useRef(true);
 
   const {
     data: conversations,
@@ -133,11 +136,37 @@ export default function AssistantPage() {
     return map;
   }, [jobs]);
 
+  const flushStreamBuffer = useCallback(() => {
+    streamFlushRafRef.current = null;
+    if (!streamBufferRef.current) return;
+    const chunk = streamBufferRef.current;
+    streamBufferRef.current = '';
+    setStreamText((prev) => prev + chunk);
+  }, []);
+
+  const queueStreamToken = useCallback(
+    (token: string) => {
+      streamBufferRef.current += token;
+      if (streamFlushRafRef.current == null) {
+        streamFlushRafRef.current = window.requestAnimationFrame(flushStreamBuffer);
+      }
+    },
+    [flushStreamBuffer],
+  );
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, streamText, streaming]);
+
+  useEffect(() => {
+    return () => {
+      if (streamFlushRafRef.current != null) {
+        cancelAnimationFrame(streamFlushRafRef.current);
+      }
+    };
+  }, []);
 
   const loadConversation = useCallback(async (id: string) => {
     setConversationId(id);
@@ -240,11 +269,26 @@ export default function AssistantPage() {
     setInput('');
     setError(null);
     setStreaming(true);
+    streamBufferRef.current = '';
+    if (streamFlushRafRef.current != null) {
+      cancelAnimationFrame(streamFlushRafRef.current);
+      streamFlushRafRef.current = null;
+    }
     setStreamText('');
+    stickToBottomRef.current = true;
     lastFailedRef.current = trimmed;
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    const clearStreamUi = () => {
+      streamBufferRef.current = '';
+      if (streamFlushRafRef.current != null) {
+        cancelAnimationFrame(streamFlushRafRef.current);
+        streamFlushRafRef.current = null;
+      }
+      setStreamText('');
+    };
 
     try {
       await streamAssistantMessage(activeId, trimmed, {
@@ -255,13 +299,14 @@ export default function AssistantPage() {
           );
         },
         onToken: (token) => {
-          setStreamText((prev) => prev + token);
+          queueStreamToken(token);
         },
         onDone: (msg) => {
+          flushStreamBuffer();
           setMessages((prev) =>
             prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
           );
-          setStreamText('');
+          clearStreamUi();
           setStreaming(false);
           lastFailedRef.current = null;
           refetchConversations();
@@ -269,27 +314,24 @@ export default function AssistantPage() {
         onError: (message) => {
           setError(message);
           setStreaming(false);
-          setStreamText('');
+          clearStreamUi();
           toast.error(message);
         },
       });
       // If stream ended without done (rare), clear streaming
       setStreaming(false);
-      if (streamText) {
-        // incomplete stream discarded intentionally
-        setStreamText('');
-      }
+      clearStreamUi();
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         setStreaming(false);
-        setStreamText('');
+        clearStreamUi();
         return;
       }
       const message =
         err instanceof Error ? err.message : 'Assistant request failed.';
       setError(message);
       setStreaming(false);
-      setStreamText('');
+      clearStreamUi();
       toast.error(message);
     } finally {
       abortRef.current = null;
@@ -484,7 +526,15 @@ export default function AssistantPage() {
               </CardTitle>
             </CardHeader>
             <ScrollArea className="h-[calc(100vh-320px)] flex-1" ref={scrollRef}>
-              <div className="space-y-4 p-4">
+              <div
+                className="space-y-4 p-4"
+                onScroll={(e) => {
+                  const t = e.currentTarget;
+                  const distance =
+                    t.scrollHeight - t.scrollTop - t.clientHeight;
+                  stickToBottomRef.current = distance < 80;
+                }}
+              >
                 {messages.length === 0 && !streaming ? (
                   <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
                     <Bot className="h-8 w-8" />
@@ -593,7 +643,11 @@ export default function AssistantPage() {
 
             <div className="border-t p-4">
               <div className="flex items-end gap-2">
+                <Label htmlFor="assistant-composer" className="sr-only">
+                  Message to JobPilot assistant
+                </Label>
                 <Textarea
+                  id="assistant-composer"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -609,19 +663,23 @@ export default function AssistantPage() {
                 />
                 {streaming ? (
                   <Button
+                    type="button"
                     size="icon"
                     variant="outline"
                     className="h-[44px] w-[44px] flex-shrink-0 rounded-xl"
                     onClick={stopGeneration}
+                    aria-label="Stop generating"
                   >
                     <Square className="h-4 w-4" />
                   </Button>
                 ) : (
                   <Button
+                    type="button"
                     size="icon"
                     className="h-[44px] w-[44px] flex-shrink-0 rounded-xl"
                     onClick={() => void sendMessage(input)}
                     disabled={!input.trim()}
+                    aria-label="Send message"
                   >
                     <Send className="h-4 w-4" />
                   </Button>

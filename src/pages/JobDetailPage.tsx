@@ -296,6 +296,7 @@ export default function JobDetailPage() {
   const {
     data: job,
     isLoading,
+    error,
     refetch,
   } = useResource(
     () => (id ? getJobById(id) : Promise.resolve(null)),
@@ -412,6 +413,18 @@ export default function JobDetailPage() {
     return <LoadingState label="Loading job…" />;
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={Briefcase}
+        title="Could not load job"
+        description={error.message}
+        actionLabel="Back to Jobs"
+        onAction={() => navigate(ROUTES.jobs)}
+      />
+    );
+  }
+
   if (!job) {
     return (
       <EmptyState
@@ -436,9 +449,9 @@ export default function JobDetailPage() {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-semibold text-muted-foreground">
+          <p className="text-lg font-semibold text-muted-foreground">
             {job.company_name_snapshot}
-          </h2>
+          </p>
           <Badge
             variant="outline"
             className={getJobStatusStyle(job.status)}

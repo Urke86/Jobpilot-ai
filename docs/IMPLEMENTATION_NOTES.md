@@ -26,7 +26,8 @@ All inserts set `user_id` from `auth.getUser()` in services. RLS remains the enf
 
 ### Auth config note
 
-Project auth `mailer_autoconfirm` was enabled for MVP local testing. Revisit before production launch.
+Project auth `mailer_autoconfirm` must stay **`false`** for public-facing environments.
+Phase 5E re-verified and patched a regression back to `false` (2026-08-10). Re-check before every launch.
 
 ### Validation (Phase 3)
 
@@ -165,3 +166,17 @@ Not in 4E: RAG, embeddings, agents, LinkedIn automation, external notification s
 3. Org budgets / hard spend caps
 4. Optional webhook/email alert channels
 5. Backfill historical metadata into `ai_generations`
+
+## Phase 5A–5E — Production hardening
+
+| Phase | Focus | Doc |
+|-------|-------|-----|
+| 5A–5A.3 | Security remediations + production gate | `PHASE5A*_*.md` |
+| 5B–5B.1 | Backend/Edge audit + idempotency/URL dedupe | `PHASE5B*_*.md` |
+| 5C | Frontend/UX/a11y | `PHASE5C_FRONTEND_UX_AUDIT.md` |
+| 5D | Performance/cost | `PHASE5D_PERFORMANCE_OPTIMIZATION.md` |
+| 5E | Architecture, DR, runbooks, final readiness | `PHASE5E_FINAL_READINESS.md` |
+
+Operational docs added in 5E: `ARCHITECTURE_FINAL.md`, `RESTORE_RUNBOOK.md`, `SECRET_ROTATION.md`, `INCIDENT_RESPONSE.md`, `DEPLOYMENT_RUNBOOK.md`, `PRE_DEPLOY_CHECKLIST.md`, `PRIVACY_DATA_MAP.md`.
+
+**Stopped after 5E.** No RAG / agents / LinkedIn automation started.

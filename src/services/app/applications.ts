@@ -10,6 +10,12 @@ import {
 } from '@/services/supabase/client';
 import type { Enums } from '@/types/database';
 
+/** Kanban/table projection — excludes cover_letter / questionnaire blobs. */
+const APPLICATION_LIST_COLUMNS =
+  'id, user_id, job_id, stage, application_date, cv_version, portfolio_sent, salary_expectation, salary_currency, contact_person, contact_email, follow_up_date, notes, created_at, updated_at';
+
+const APPLICATION_LIST_LIMIT = 500;
+
 export type CreateApplicationInput = {
   jobId: string;
   stage?: Enums<'application_stage'>;
@@ -29,10 +35,11 @@ export async function listApplications(): Promise<ApplicationRecord[]> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('applications')
-    .select('*')
-    .order('updated_at', { ascending: false });
+    .select(APPLICATION_LIST_COLUMNS)
+    .order('updated_at', { ascending: false })
+    .limit(APPLICATION_LIST_LIMIT);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ApplicationRecord[];
 }
 
 export async function getApplicationById(

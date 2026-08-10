@@ -206,6 +206,7 @@ export default function ApplicationDetailPage() {
   const {
     data: application,
     isLoading,
+    error,
     refetch,
   } = useResource(
     () => (id ? getApplicationById(id) : Promise.resolve(null)),
@@ -267,6 +268,18 @@ export default function ApplicationDetailPage() {
 
   if (isLoading) {
     return <LoadingState label="Loading application…" />;
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Could not load application"
+        description={error.message}
+        actionLabel="Back to Applications"
+        onAction={() => navigate(ROUTES.applications)}
+      />
+    );
   }
 
   if (!application) {

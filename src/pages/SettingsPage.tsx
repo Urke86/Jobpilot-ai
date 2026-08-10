@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState, LoadingState } from '@/components/common';
-import { AiAnalyticsPanel } from '@/components/settings/AiAnalyticsPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,6 +51,12 @@ import {
   updateCurrentProfile,
 } from '@/services';
 import type { Enums } from '@/types/database';
+
+const AiAnalyticsPanel = lazy(() =>
+  import('@/components/settings/AiAnalyticsPanel').then((m) => ({
+    default: m.AiAnalyticsPanel,
+  })),
+);
 
 interface PreferencesState {
   remoteType: string;
@@ -630,7 +635,11 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="ai-analytics" className="space-y-6">
-          <AiAnalyticsPanel />
+          {activeTab === 'ai-analytics' ? (
+            <Suspense fallback={<LoadingState label="Loading AI analytics…" />}>
+              <AiAnalyticsPanel />
+            </Suspense>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">

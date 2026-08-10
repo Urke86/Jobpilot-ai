@@ -148,7 +148,9 @@ export async function listAiGenerations(limit = 500): Promise<AiGenerationRow[]>
   await requireUserId();
   const { data, error } = await supabase
     .from('ai_generations')
-    .select('*')
+    .select(
+      'id, user_id, feature, provider, model, prompt_version, status, input_tokens, output_tokens, total_tokens, estimated_cost_usd, latency_ms, error_code, source_table, source_id, created_at',
+    )
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;

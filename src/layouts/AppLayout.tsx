@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -64,6 +65,9 @@ export default function AppLayout() {
         <SheetContent side="left" className="flex w-64 flex-col p-0">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation</SheetTitle>
+            <SheetDescription>
+              Primary application links for JobPilot.
+            </SheetDescription>
           </SheetHeader>
           <BrandMark />
           <div className="flex-1 p-4">
@@ -97,12 +101,14 @@ export default function AppLayout() {
         <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            type="text"
-            placeholder="Search jobs, companies..."
+            type="search"
+            placeholder="Search coming soon"
+            aria-label="Global search (coming soon)"
+            disabled
             className={cn(
               'h-9 w-full rounded-lg border-none bg-muted py-2 pl-9 pr-14 text-sm text-foreground outline-none',
               'placeholder:text-muted-foreground',
-              'focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background',
+              'disabled:cursor-not-allowed disabled:opacity-70',
               'transition-colors duration-150',
             )}
           />
@@ -116,10 +122,11 @@ export default function AppLayout() {
             variant="ghost"
             size="icon"
             className="relative"
-            aria-label="Notifications"
+            aria-label="Notifications (coming soon)"
+            disabled
+            title="Notifications coming soon"
           >
             <Bell className="h-4 w-4" />
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-500" />
           </Button>
 
           <Button

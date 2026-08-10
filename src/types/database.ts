@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -98,6 +98,113 @@ export type Database = {
           },
         ]
       }
+      ai_evaluations: {
+        Row: {
+          created_at: string
+          evaluator: string
+          explanation: string | null
+          generation_id: string
+          id: string
+          metadata: Json
+          result: Json
+          score: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          evaluator?: string
+          explanation?: string | null
+          generation_id: string
+          id?: string
+          metadata?: Json
+          result?: Json
+          score: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          evaluator?: string
+          explanation?: string | null
+          generation_id?: string
+          id?: string
+          metadata?: Json
+          result?: Json
+          score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_evaluations_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_generations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_generations: {
+        Row: {
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          estimated_cost_usd: number | null
+          feature: Database["public"]["Enums"]["ai_feature"]
+          id: string
+          input_tokens: number | null
+          latency_ms: number | null
+          metadata: Json
+          model: string | null
+          output_tokens: number | null
+          prompt_version: string | null
+          provider: string
+          source_id: string | null
+          source_table: string | null
+          status: Database["public"]["Enums"]["ai_generation_status"]
+          total_tokens: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          feature: Database["public"]["Enums"]["ai_feature"]
+          id?: string
+          input_tokens?: number | null
+          latency_ms?: number | null
+          metadata?: Json
+          model?: string | null
+          output_tokens?: number | null
+          prompt_version?: string | null
+          provider?: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: Database["public"]["Enums"]["ai_generation_status"]
+          total_tokens?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          feature?: Database["public"]["Enums"]["ai_feature"]
+          id?: string
+          input_tokens?: number | null
+          latency_ms?: number | null
+          metadata?: Json
+          model?: string | null
+          output_tokens?: number | null
+          prompt_version?: string | null
+          provider?: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: Database["public"]["Enums"]["ai_generation_status"]
+          total_tokens?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_messages: {
         Row: {
           content: string
@@ -136,6 +243,48 @@ export type Database = {
           },
         ]
       }
+      ai_observability_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["ai_alert_kind"]
+          message: string
+          metadata: Json
+          metric_value: number | null
+          severity: Database["public"]["Enums"]["ai_alert_severity"]
+          threshold_value: number | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["ai_alert_kind"]
+          message: string
+          metadata?: Json
+          metric_value?: number | null
+          severity?: Database["public"]["Enums"]["ai_alert_severity"]
+          threshold_value?: number | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["ai_alert_kind"]
+          message?: string
+          metadata?: Json
+          metric_value?: number | null
+          severity?: Database["public"]["Enums"]["ai_alert_severity"]
+          threshold_value?: number | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       application_artifacts: {
         Row: {
           application_id: string
@@ -173,6 +322,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "application_artifacts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      application_events: {
+        Row: {
+          application_id: string
+          created_at: string
+          ends_at: string | null
+          event_type: Database["public"]["Enums"]["application_event_type"]
+          external_event_id: string | null
+          id: string
+          idempotency_key: string | null
+          meeting_url: string | null
+          metadata: Json
+          provider: string
+          starts_at: string | null
+          timezone: string | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          ends_at?: string | null
+          event_type?: Database["public"]["Enums"]["application_event_type"]
+          external_event_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          meeting_url?: string | null
+          metadata?: Json
+          provider?: string
+          starts_at?: string | null
+          timezone?: string | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          ends_at?: string | null
+          event_type?: Database["public"]["Enums"]["application_event_type"]
+          external_event_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          meeting_url?: string | null
+          metadata?: Json
+          provider?: string
+          starts_at?: string | null
+          timezone?: string | null
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_events_application_id_fkey"
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
@@ -408,179 +616,6 @@ export type Database = {
           },
         ]
       }
-      jobs: {
-        Row: {
-          company_id: string | null
-          company_name_snapshot: string
-          created_at: string
-          date_discovered: string
-          deadline: string | null
-          employment_type: Database["public"]["Enums"]["employment_type"]
-          id: string
-          ingestion_metadata: Json
-          job_description: string | null
-          job_title: string
-          job_url: string | null
-          location: string | null
-          remote_scope: Database["public"]["Enums"]["remote_scope"]
-          salary_currency: string
-          salary_max: number | null
-          salary_min: number | null
-          source: string | null
-          status: Database["public"]["Enums"]["job_status"]
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          company_id?: string | null
-          company_name_snapshot: string
-          created_at?: string
-          date_discovered?: string
-          deadline?: string | null
-          employment_type?: Database["public"]["Enums"]["employment_type"]
-          id?: string
-          ingestion_metadata?: Json
-          job_description?: string | null
-          job_title: string
-          job_url?: string | null
-          location?: string | null
-          remote_scope?: Database["public"]["Enums"]["remote_scope"]
-          salary_currency?: string
-          salary_max?: number | null
-          salary_min?: number | null
-          source?: string | null
-          status?: Database["public"]["Enums"]["job_status"]
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          company_id?: string | null
-          company_name_snapshot?: string
-          created_at?: string
-          date_discovered?: string
-          deadline?: string | null
-          employment_type?: Database["public"]["Enums"]["employment_type"]
-          id?: string
-          ingestion_metadata?: Json
-          job_description?: string | null
-          job_title?: string
-          job_url?: string | null
-          location?: string | null
-          remote_scope?: Database["public"]["Enums"]["remote_scope"]
-          salary_currency?: string
-          salary_max?: number | null
-          salary_min?: number | null
-          source?: string | null
-          status?: Database["public"]["Enums"]["job_status"]
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "jobs_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          full_name: string | null
-          headline: string | null
-          id: string
-          location: string | null
-          master_cv_text: string | null
-          portfolio_summary: string | null
-          remote_preference: Database["public"]["Enums"]["remote_preference"]
-          salary_currency: string
-          salary_min: number | null
-          target_roles: string[]
-          timezone: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          full_name?: string | null
-          headline?: string | null
-          id?: string
-          location?: string | null
-          master_cv_text?: string | null
-          portfolio_summary?: string | null
-          remote_preference?: Database["public"]["Enums"]["remote_preference"]
-          salary_currency?: string
-          salary_min?: number | null
-          target_roles?: string[]
-          timezone?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          full_name?: string | null
-          headline?: string | null
-          id?: string
-          location?: string | null
-          master_cv_text?: string | null
-          portfolio_summary?: string | null
-          remote_preference?: Database["public"]["Enums"]["remote_preference"]
-          salary_currency?: string
-          salary_min?: number | null
-          target_roles?: string[]
-          timezone?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      user_integrations: {
-        Row: {
-          access_token_cipher: string | null
-          created_at: string
-          expires_at: string | null
-          id: string
-          metadata: Json
-          provider: Database["public"]["Enums"]["integration_provider"]
-          provider_account_email: string | null
-          refresh_token_cipher: string | null
-          scopes: string[]
-          token_iv: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          access_token_cipher?: string | null
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          metadata?: Json
-          provider: Database["public"]["Enums"]["integration_provider"]
-          provider_account_email?: string | null
-          refresh_token_cipher?: string | null
-          scopes?: string[]
-          token_iv?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          access_token_cipher?: string | null
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          metadata?: Json
-          provider?: Database["public"]["Enums"]["integration_provider"]
-          provider_account_email?: string | null
-          refresh_token_cipher?: string | null
-          scopes?: string[]
-          token_iv?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       job_emails: {
         Row: {
           application_id: string | null
@@ -657,227 +692,260 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_emails_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_emails_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_emails_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      application_events: {
+      jobs: {
         Row: {
-          application_id: string
+          company_id: string | null
+          company_name_snapshot: string
           created_at: string
-          ends_at: string | null
-          event_type: Database["public"]["Enums"]["application_event_type"]
-          external_event_id: string | null
+          date_discovered: string
+          deadline: string | null
+          employment_type: Database["public"]["Enums"]["employment_type"]
           id: string
-          meeting_url: string | null
-          metadata: Json
-          provider: string
-          starts_at: string | null
-          timezone: string | null
-          title: string | null
+          ingestion_metadata: Json
+          job_description: string | null
+          job_title: string
+          job_url: string | null
+          location: string | null
+          normalized_job_url: string | null
+          remote_scope: Database["public"]["Enums"]["remote_scope"]
+          salary_currency: string
+          salary_max: number | null
+          salary_min: number | null
+          source: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          updated_at: string
           user_id: string
         }
         Insert: {
-          application_id: string
+          company_id?: string | null
+          company_name_snapshot: string
           created_at?: string
-          ends_at?: string | null
-          event_type?: Database["public"]["Enums"]["application_event_type"]
-          external_event_id?: string | null
+          date_discovered?: string
+          deadline?: string | null
+          employment_type?: Database["public"]["Enums"]["employment_type"]
           id?: string
-          meeting_url?: string | null
-          metadata?: Json
-          provider?: string
-          starts_at?: string | null
-          timezone?: string | null
-          title?: string | null
+          ingestion_metadata?: Json
+          job_description?: string | null
+          job_title: string
+          job_url?: string | null
+          location?: string | null
+          normalized_job_url?: string | null
+          remote_scope?: Database["public"]["Enums"]["remote_scope"]
+          salary_currency?: string
+          salary_max?: number | null
+          salary_min?: number | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
           user_id: string
         }
         Update: {
-          application_id?: string
+          company_id?: string | null
+          company_name_snapshot?: string
           created_at?: string
-          ends_at?: string | null
-          event_type?: Database["public"]["Enums"]["application_event_type"]
-          external_event_id?: string | null
+          date_discovered?: string
+          deadline?: string | null
+          employment_type?: Database["public"]["Enums"]["employment_type"]
           id?: string
-          meeting_url?: string | null
-          metadata?: Json
-          provider?: string
-          starts_at?: string | null
-          timezone?: string | null
-          title?: string | null
+          ingestion_metadata?: Json
+          job_description?: string | null
+          job_title?: string
+          job_url?: string | null
+          location?: string | null
+          normalized_job_url?: string | null
+          remote_scope?: Database["public"]["Enums"]["remote_scope"]
+          salary_currency?: string
+          salary_max?: number | null
+          salary_min?: number | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          headline: string | null
+          id: string
+          location: string | null
+          master_cv_text: string | null
+          portfolio_summary: string | null
+          remote_preference: Database["public"]["Enums"]["remote_preference"]
+          salary_currency: string
+          salary_min: number | null
+          target_roles: string[]
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          headline?: string | null
+          id?: string
+          location?: string | null
+          master_cv_text?: string | null
+          portfolio_summary?: string | null
+          remote_preference?: Database["public"]["Enums"]["remote_preference"]
+          salary_currency?: string
+          salary_min?: number | null
+          target_roles?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          headline?: string | null
+          id?: string
+          location?: string | null
+          master_cv_text?: string | null
+          portfolio_summary?: string | null
+          remote_preference?: Database["public"]["Enums"]["remote_preference"]
+          salary_currency?: string
+          salary_min?: number | null
+          target_roles?: string[]
+          timezone?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
       prompt_versions: {
         Row: {
-          id: string
-          feature: Database["public"]["Enums"]["ai_feature"]
-          version: string
-          description: string | null
-          system_prompt: string
           changelog: string | null
+          created_at: string
+          description: string | null
+          feature: Database["public"]["Enums"]["ai_feature"]
+          id: string
           is_active: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          feature: Database["public"]["Enums"]["ai_feature"]
+          system_prompt: string
           version: string
-          description?: string | null
-          system_prompt?: string
+        }
+        Insert: {
           changelog?: string | null
-          is_active?: boolean
           created_at?: string
+          description?: string | null
+          feature: Database["public"]["Enums"]["ai_feature"]
+          id?: string
+          is_active?: boolean
+          system_prompt?: string
+          version: string
         }
         Update: {
-          id?: string
+          changelog?: string | null
+          created_at?: string
+          description?: string | null
           feature?: Database["public"]["Enums"]["ai_feature"]
+          id?: string
+          is_active?: boolean
+          system_prompt?: string
           version?: string
-          description?: string | null
-          system_prompt?: string
-          changelog?: string | null
-          is_active?: boolean
-          created_at?: string
         }
         Relationships: []
       }
-      ai_generations: {
+      rate_limit_leases: {
         Row: {
-          id: string
-          user_id: string
-          feature: Database["public"]["Enums"]["ai_feature"]
-          provider: string
-          model: string | null
-          prompt_version: string | null
-          status: Database["public"]["Enums"]["ai_generation_status"]
-          input_tokens: number | null
-          output_tokens: number | null
-          total_tokens: number | null
-          estimated_cost_usd: number | null
-          latency_ms: number | null
-          error_code: string | null
-          error_message: string | null
-          source_table: string | null
-          source_id: string | null
-          metadata: Json
           created_at: string
+          expires_at: string
+          id: string
+          lease_key: string
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          feature: Database["public"]["Enums"]["ai_feature"]
-          provider?: string
-          model?: string | null
-          prompt_version?: string | null
-          status?: Database["public"]["Enums"]["ai_generation_status"]
-          input_tokens?: number | null
-          output_tokens?: number | null
-          total_tokens?: number | null
-          estimated_cost_usd?: number | null
-          latency_ms?: number | null
-          error_code?: string | null
-          error_message?: string | null
-          source_table?: string | null
-          source_id?: string | null
-          metadata?: Json
           created_at?: string
+          expires_at: string
+          id?: string
+          lease_key: string
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          feature?: Database["public"]["Enums"]["ai_feature"]
-          provider?: string
-          model?: string | null
-          prompt_version?: string | null
-          status?: Database["public"]["Enums"]["ai_generation_status"]
-          input_tokens?: number | null
-          output_tokens?: number | null
-          total_tokens?: number | null
-          estimated_cost_usd?: number | null
-          latency_ms?: number | null
-          error_code?: string | null
-          error_message?: string | null
-          source_table?: string | null
-          source_id?: string | null
-          metadata?: Json
           created_at?: string
+          expires_at?: string
+          id?: string
+          lease_key?: string
+          user_id?: string
         }
         Relationships: []
       }
-      ai_evaluations: {
+      user_integrations: {
         Row: {
-          id: string
-          user_id: string
-          generation_id: string
-          evaluator: string
-          score: number
-          result: Json
-          explanation: string | null
-          metadata: Json
+          access_token_cipher: string | null
           created_at: string
+          expires_at: string | null
+          id: string
+          metadata: Json
+          provider: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email: string | null
+          refresh_token_cipher: string | null
+          scopes: string[]
+          token_iv: string | null
+          updated_at: string
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          generation_id: string
-          evaluator?: string
-          score: number
-          result?: Json
-          explanation?: string | null
-          metadata?: Json
+          access_token_cipher?: string | null
           created_at?: string
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          provider: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email?: string | null
+          refresh_token_cipher?: string | null
+          scopes?: string[]
+          token_iv?: string | null
+          updated_at?: string
+          user_id: string
         }
         Update: {
+          access_token_cipher?: string | null
+          created_at?: string
+          expires_at?: string | null
           id?: string
+          metadata?: Json
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          provider_account_email?: string | null
+          refresh_token_cipher?: string | null
+          scopes?: string[]
+          token_iv?: string | null
+          updated_at?: string
           user_id?: string
-          generation_id?: string
-          evaluator?: string
-          score?: number
-          result?: Json
-          explanation?: string | null
-          metadata?: Json
-          created_at?: string
-        }
-        Relationships: []
-      }
-      ai_observability_alerts: {
-        Row: {
-          id: string
-          user_id: string
-          kind: Database["public"]["Enums"]["ai_alert_kind"]
-          severity: Database["public"]["Enums"]["ai_alert_severity"]
-          title: string
-          message: string
-          metric_value: number | null
-          threshold_value: number | null
-          acknowledged_at: string | null
-          metadata: Json
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          kind: Database["public"]["Enums"]["ai_alert_kind"]
-          severity?: Database["public"]["Enums"]["ai_alert_severity"]
-          title: string
-          message: string
-          metric_value?: number | null
-          threshold_value?: number | null
-          acknowledged_at?: string | null
-          metadata?: Json
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          kind?: Database["public"]["Enums"]["ai_alert_kind"]
-          severity?: Database["public"]["Enums"]["ai_alert_severity"]
-          title?: string
-          message?: string
-          metric_value?: number | null
-          threshold_value?: number | null
-          acknowledged_at?: string | null
-          metadata?: Json
-          created_at?: string
         }
         Relationships: []
       }
@@ -885,30 +953,49 @@ export type Database = {
     Views: {
       user_integrations_public: {
         Row: {
-          id: string
-          user_id: string
-          provider: Database["public"]["Enums"]["integration_provider"]
-          provider_account_email: string | null
-          scopes: string[]
+          created_at: string | null
           expires_at: string | null
-          metadata: Json
-          created_at: string
-          updated_at: string
+          id: string | null
+          metadata: Json | null
+          provider: Database["public"]["Enums"]["integration_provider"] | null
+          provider_account_email: string | null
+          scopes: string[] | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          metadata?: Json | null
+          provider?: Database["public"]["Enums"]["integration_provider"] | null
+          provider_account_email?: string | null
+          scopes?: string[] | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          metadata?: Json | null
+          provider?: Database["public"]["Enums"]["integration_provider"] | null
+          provider_account_email?: string | null
+          scopes?: string[] | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
     }
     Functions: {
+      ai_analytics_summary: { Args: never; Returns: Json }
       current_user_id: { Args: never; Returns: string }
+      normalize_job_url: { Args: { raw: string }; Returns: string }
       try_acquire_rate_limit: {
-        Args: {
-          p_lease_key: string
-          p_ttl_seconds: number
-          p_user_id?: string | null
-        }
+        Args: { p_lease_key: string; p_ttl_seconds: number; p_user_id?: string }
         Returns: boolean
       }
-      ai_analytics_summary: { Args: never; Returns: Json }
     }
     Enums: {
       activity_entity_type:
@@ -940,9 +1027,9 @@ export type Database = {
         | "gmail_connected"
         | "gmail_synced"
         | "gmail_disconnected"
-        | "hiring_email_linked"
         | "stage_accepted_from_email"
         | "interview_event_created"
+        | "hiring_email_linked"
         | "ai_generation_recorded"
         | "ai_evaluation_submitted"
         | "ai_alert_raised"
@@ -1197,9 +1284,9 @@ export const Constants = {
         "gmail_connected",
         "gmail_synced",
         "gmail_disconnected",
-        "hiring_email_linked",
         "stage_accepted_from_email",
         "interview_event_created",
+        "hiring_email_linked",
         "ai_generation_recorded",
         "ai_evaluation_submitted",
         "ai_alert_raised",

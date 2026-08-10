@@ -63,6 +63,8 @@ auth.users 1──* activities      (polymorphic entity_id, no FK)
 
 - **profiles.user_id** — `UNIQUE` (one profile per auth user)
 - **jobs** — partial unique index on `(user_id, job_url)` where `job_url is not null`
+- **jobs.normalized_job_url** — maintained by trigger via `normalize_job_url()`; partial unique index `(user_id, normalized_job_url)` where not null (Phase 5B.1 / H2)
+- **application_events.idempotency_key** — partial unique index `(user_id, idempotency_key)` where not null (Phase 5B.1 / H1)
 - **applications** — `UNIQUE (user_id, job_id)` (one application per job)
 - **job_analysis** scores — `CHECK` 0–100; strengths/gaps/risks must be JSON arrays
 - **job_analysis.metadata** — jsonb object for model/tokens/cost/cv_focus/interview_focus (Phase 4A)
@@ -93,6 +95,8 @@ No policies for `anon`. Cross-user references are rejected by policy checks.
 supabase/migrations/
   20260807120935_enums_helpers_and_core_schema.sql
   20260807120936_row_level_security.sql
+  …
+  20260810010000_phase5b1_idempotency_url_dedupe.sql
 ```
 
 Apply to the linked project:
@@ -130,11 +134,11 @@ The Supabase client is typed with `Database` (`src/lib/supabase/client.ts`).
 
 | Path | Role |
 |------|------|
-| `src/services/mock/ui-adapters.ts` | Current page data source (preserves UI) |
-| `src/services/contracts.ts` | Repository interfaces over DB shapes |
-| `src/services/supabase/*` | Typed Supabase repositories (ready for Phase 3) |
+| `src/services/app/*` | Page-facing authenticated CRUD / AI facades |
+| `src/services/contracts.ts` | Shared record/input types |
+| `src/services/supabase/*` | Lower-level helpers (prefer `app/` from pages) |
 
-Pages must not call `supabase.from(...)` directly.
+Pages must not call `supabase.from(...)` directly for business writes.
 
 ## Seed data
 
@@ -148,8 +152,26 @@ RLS remains the authority for isolation.
 
 Profiles are created on signup via select-then-insert (`ensureProfile`) — existing rows are never overwritten.
 
+## Migrations (Phase 5E)
+
+Remote `supabase_migrations.schema_migrations` matches repo files through
+`20260810010000_phase5b1_idempotency_url_dedupe` (verified 2026-08-10).
+
+Policy: migration-first; no manual Dashboard DDL; prefer forward-fix over destructive rollback.
+See [PHASE5E_FINAL_READINESS.md](./PHASE5E_FINAL_READINESS.md) and [RESTORE_RUNBOOK.md](./RESTORE_RUNBOOK.md).
+
+## Backup note (Phase 5E)
+
+Live Management API: `pitr_enabled=false`, `walg_enabled=true`. PITR is mandatory before open multi-tenant (paid add-on; do not enable without approval).
+
+## Account deletion note
+
+User-owned tables reference `auth.users(id) ON DELETE CASCADE`. There is **no** self-service delete-account UI yet. Admin Auth user deletion cascades public data; Google Calendar copies may remain externally. See [PRIVACY_DATA_MAP.md](./PRIVACY_DATA_MAP.md).
+
 ## Future notes
 
 1. Additional n8n source adapters (public RSS/APIs only).
 2. Optional Storage buckets for CV uploads.
-3. Gmail / Calendar / RAG only with explicit phase approval.
+3. Retention jobs for `job_emails` / AI messages (proposed, not auto-enforced).
+4. Productized account deletion + export.
+5. RAG / agents / LinkedIn only with explicit phase approval.

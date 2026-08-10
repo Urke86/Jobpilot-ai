@@ -12,6 +12,13 @@ const ARTIFACT_VERSION = 'v1-artifacts';
 const DEFAULT_MODEL = Deno.env.get('OPENAI_ANALYSIS_MODEL') ?? 'gpt-4o-mini';
 const RATE_LIMIT_SECONDS = 15;
 const MIN_PROFILE_SIGNAL_CHARS = 40;
+const MAX_JOB_DESCRIPTION_CHARS = 20_000;
+const MAX_CV_CHARS = 20_000;
+const MAX_PORTFOLIO_CHARS = 8_000;
+const MAX_USER_NOTES_CHARS = 4_000;
+const MAX_USER_INSTRUCTION_CHARS = 4_000;
+const MAX_QUESTION_CHARS = 4_000;
+const MAX_OUTPUT_TOKENS = 3_000;
 
 const ARTIFACT_TYPES = [
   'cv_recommendations',
@@ -274,11 +281,18 @@ const ACTIVITY_TITLES: Partial<Record<ArtifactType, string>> = {
   custom: 'Custom artifact generated',
 };
 
-function jsonResponse(body: unknown, status = 200, req?: Request) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
-  });
+function createJsonResponse(req: Request) {
+  return (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeadersFor(req), 'Content-Type': 'application/json' },
+    });
+}
+
+function clipText(value: string, max: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}\n…[truncated]`;
 }
 
 function estimateCostUsd(
@@ -370,6 +384,7 @@ async function callOpenAi(args: {
       body: JSON.stringify({
         model: args.model,
         temperature: 0.3,
+        max_tokens: MAX_OUTPUT_TOKENS,
         messages,
         response_format: {
           type: 'json_schema',
@@ -426,6 +441,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
 
+  const jsonResponse = createJsonResponse(req);
+
   try {
     if (req.method !== 'POST') {
       return jsonResponse({ error: 'Method not allowed' }, 405);
@@ -468,12 +485,16 @@ Deno.serve(async (req) => {
       typeof body?.applicationId === 'string' ? body.applicationId : null;
     const artifactType = body?.artifactType;
     const question =
-      typeof body?.question === 'string' ? body.question.trim() : '';
+      typeof body?.question === 'string'
+        ? clipText(body.question, MAX_QUESTION_CHARS)
+        : '';
     const userNotes =
-      typeof body?.userNotes === 'string' ? body.userNotes.trim() : '';
+      typeof body?.userNotes === 'string'
+        ? clipText(body.userNotes, MAX_USER_NOTES_CHARS)
+        : '';
     const userInstruction =
       typeof body?.userInstruction === 'string'
-        ? body.userInstruction.trim()
+        ? clipText(body.userInstruction, MAX_USER_INSTRUCTION_CHARS)
         : '';
     const contactName =
       typeof body?.contactName === 'string' ? body.contactName.trim() : '';
@@ -532,11 +553,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('id', application.job_id)
-      .maybeSingle();
+    const [{ data: job, error: jobError }, { data: profile }] =
+      await Promise.all([
+        supabase
+          .from('jobs')
+          .select('*')
+          .eq('id', application.job_id)
+          .maybeSingle(),
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
 
     if (jobError || !job) {
       return jsonResponse({ error: 'Linked job not found.' }, 404);
@@ -544,12 +573,6 @@ Deno.serve(async (req) => {
     if (job.user_id !== user.id) {
       return jsonResponse({ error: 'You do not have access to this job.' }, 403);
     }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
 
     const profileSignal = [
       profile?.master_cv_text,
@@ -571,32 +594,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    let company: Record<string, unknown> | null = null;
-    if (job.company_id) {
-      const { data: companyRow } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', job.company_id)
-        .maybeSingle();
-      company = companyRow;
-    }
+    const companyPromise = job.company_id
+      ? supabase
+          .from('companies')
+          .select('*')
+          .eq('id', job.company_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null as Record<string, unknown> | null });
 
-    const { data: analysis } = await supabase
-      .from('job_analysis')
-      .select('*')
-      .eq('job_id', job.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const [{ data: companyRow }, { data: analysis }, { data: recent }] =
+      await Promise.all([
+        companyPromise,
+        supabase
+          .from('job_analysis')
+          .select('*')
+          .eq('job_id', job.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('application_artifacts')
+          .select('id, created_at, version')
+          .eq('application_id', applicationId)
+          .eq('artifact_type', artifactType)
+          .order('version', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-    const { data: recent } = await supabase
-      .from('application_artifacts')
-      .select('id, created_at, version')
-      .eq('application_id', applicationId)
-      .eq('artifact_type', artifactType)
-      .order('version', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const company = companyRow ?? null;
 
     const leaseOk = await tryAcquireRateLimit(
       supabase,
@@ -672,12 +698,12 @@ Deno.serve(async (req) => {
       'MASTER CV':
         typeof profile?.master_cv_text === 'string' &&
         profile.master_cv_text.trim()
-          ? profile.master_cv_text.trim()
+          ? clipText(profile.master_cv_text, MAX_CV_CHARS)
           : 'Not provided',
       PORTFOLIO:
         typeof profile?.portfolio_summary === 'string' &&
         profile.portfolio_summary.trim()
-          ? profile.portfolio_summary.trim()
+          ? clipText(profile.portfolio_summary, MAX_PORTFOLIO_CHARS)
           : 'Not provided',
       JOB: [
         `Title: ${job.job_title}`,
@@ -686,7 +712,10 @@ Deno.serve(async (req) => {
         `Remote scope: ${job.remote_scope}`,
         `Employment: ${job.employment_type}`,
         `Salary: ${job.salary_min ?? '?'}–${job.salary_max ?? '?'} ${job.salary_currency}`,
-        `Description:\n${String(job.job_description ?? '').trim() || 'Not provided'}`,
+        `Description:\n${
+          clipText(String(job.job_description ?? ''), MAX_JOB_DESCRIPTION_CHARS) ||
+          'Not provided'
+        }`,
       ].join('\n'),
       'LATEST JOB ANALYSIS': analysisBlock,
       APPLICATION: [

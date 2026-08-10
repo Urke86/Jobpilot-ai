@@ -2,7 +2,10 @@
 
 ## Purpose
 
-JobPilot AI helps users discover jobs, track applications, manage companies/contacts, and (later) run AI-assisted analysis. Phases 1–3 deliver architecture, schema/RLS, and authenticated Supabase CRUD while preserving the Bolt UI language.
+JobPilot AI helps users discover jobs, track applications, manage companies/contacts, and run AI-assisted analysis, artifacts, assistant chat, and Hiring Inbox workflows.
+
+**Final architecture map (Phase 5E):** [ARCHITECTURE_FINAL.md](./ARCHITECTURE_FINAL.md)  
+**Ops:** [DEPLOYMENT_RUNBOOK.md](./DEPLOYMENT_RUNBOOK.md) · [RESTORE_RUNBOOK.md](./RESTORE_RUNBOOK.md) · [INCIDENT_RESPONSE.md](./INCIDENT_RESPONSE.md) · [PHASE5E_FINAL_READINESS.md](./PHASE5E_FINAL_READINESS.md)
 
 ## Stack
 
@@ -70,7 +73,12 @@ See [AUTH_AND_DATA_FLOW.md](./AUTH_AND_DATA_FLOW.md), [DATABASE.md](./DATABASE.m
 | 4C.2 n8n job ingestion | Done |
 | 4D Gmail + Calendar | Done |
 | 4E AI observability | Done |
-| 4F+ RAG / agents / send email | Not started |
+| 5A–5A.3 Security / production gate | Done |
+| 5B–5B.1 Backend hardening | Done |
+| 5C Frontend / UX audit | Done |
+| 5D Performance / cost | Done |
+| 5E Architecture / DR / readiness | Done |
+| RAG / agents / LinkedIn automation | Not started |
 
 ## Environment
 
@@ -92,3 +100,5 @@ Edge secrets (Dashboard → Edge Functions → Secrets, or CLI):
 - `GOOGLE_TOKEN_ENCRYPTION_KEY`
 - optional `GOOGLE_OAUTH_STATE_SECRET`
 - `JOBPILOT_APP_URL` (OAuth return to app)
+
+Secret rotation: [SECRET_ROTATION.md](./SECRET_ROTATION.md).

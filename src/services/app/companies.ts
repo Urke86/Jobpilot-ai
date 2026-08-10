@@ -13,8 +13,11 @@ export async function listCompanies(): Promise<CompanyRecord[]> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('companies')
-    .select('*')
-    .order('name', { ascending: true });
+    .select(
+      'id, user_id, name, website, industry, company_size, notes, ai_focus, careers_url, created_at, updated_at',
+    )
+    .order('name', { ascending: true })
+    .limit(500);
   if (error) throw error;
   return data ?? [];
 }
@@ -34,9 +37,16 @@ export async function findCompanyByName(
   name: string,
 ): Promise<CompanyRecord | null> {
   const supabase = requireSupabaseClient();
-  const normalized = name.trim().toLowerCase();
-  const { data, error } = await supabase.from('companies').select('*');
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Prefer indexed name match; fall back to case-insensitive scan of candidates.
+  const { data, error } = await supabase
+    .from('companies')
+    .select('id, user_id, name, website, industry, company_size, notes, ai_focus, careers_url, created_at, updated_at')
+    .ilike('name', trimmed)
+    .limit(25);
   if (error) throw error;
+  const normalized = trimmed.toLowerCase();
   return (
     data?.find((company) => company.name.trim().toLowerCase() === normalized) ??
     null

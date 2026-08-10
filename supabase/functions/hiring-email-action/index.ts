@@ -19,6 +19,58 @@ const STAGES = new Set([
   'withdrawn',
 ]);
 
+/** Google Calendar custom IDs must be base32hex: [0-9a-v], length 5–1024. */
+function toBase32Hex(bytes: Uint8Array): string {
+  const alphabet = '0123456789abcdefghijklmnopqrstuv';
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    out += alphabet[(value << (5 - bits)) & 31];
+  }
+  return out;
+}
+
+async function deriveCalendarIds(input: {
+  userId: string;
+  applicationId: string;
+  startsAt: string;
+  endsAt: string;
+  title: string;
+  clientKey?: string | null;
+}): Promise<{ idempotencyKey: string; googleEventId: string }> {
+  const material = input.clientKey?.trim()
+    ? `client\0${input.userId}\0${input.clientKey.trim()}`
+    : [
+        'jp-cal-v1',
+        input.userId,
+        input.applicationId,
+        input.startsAt,
+        input.endsAt,
+        input.title.trim().toLowerCase(),
+      ].join('\0');
+  const digest = new Uint8Array(
+    await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(material),
+    ),
+  );
+  const idempotencyKey = [...digest]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  // 32 chars keeps us well within Google's limits and inside [0-9a-v].
+  const googleEventId = toBase32Hex(digest).slice(0, 32);
+  return { idempotencyKey, googleEventId };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeadersFor(req) });
@@ -273,6 +325,97 @@ Deno.serve(async (req) => {
           401, req);
       }
 
+      const clientKey =
+        typeof preview.idempotency_key === 'string'
+          ? preview.idempotency_key.trim().slice(0, 128)
+          : typeof body?.idempotency_key === 'string'
+            ? body.idempotency_key.trim().slice(0, 128)
+            : null;
+
+      const { idempotencyKey, googleEventId } = await deriveCalendarIds({
+        userId,
+        applicationId,
+        startsAt,
+        endsAt,
+        title,
+        clientKey,
+      });
+
+      const { data: existingEvent } = await supabase
+        .from('application_events')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+
+      if (existingEvent) {
+        return jsonResponse(
+          {
+            status: 'already_created',
+            event: existingEvent,
+            google_event_id: existingEvent.external_event_id,
+            html_link:
+              typeof existingEvent.metadata === 'object' &&
+              existingEvent.metadata &&
+              !Array.isArray(existingEvent.metadata) &&
+              typeof (existingEvent.metadata as Record<string, unknown>)
+                .html_link === 'string'
+                ? ((existingEvent.metadata as Record<string, unknown>)
+                    .html_link as string)
+                : null,
+            idempotency_key: idempotencyKey,
+          },
+          200,
+          req,
+        );
+      }
+
+      // Soft lease reduces stampedes; durable uniqueness is idempotency_key + Google id.
+      const calLease = await tryAcquireRateLimit(
+        supabase,
+        `calendar-create:${idempotencyKey}`,
+        30,
+      );
+      if (!calLease) {
+        const { data: raced } = await supabase
+          .from('application_events')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('idempotency_key', idempotencyKey)
+          .maybeSingle();
+        if (raced) {
+          return jsonResponse(
+            {
+              status: 'already_created',
+              event: raced,
+              google_event_id: raced.external_event_id,
+              html_link:
+                typeof raced.metadata === 'object' &&
+                raced.metadata &&
+                !Array.isArray(raced.metadata) &&
+                typeof (raced.metadata as Record<string, unknown>).html_link ===
+                  'string'
+                  ? ((raced.metadata as Record<string, unknown>)
+                      .html_link as string)
+                  : null,
+              idempotency_key: idempotencyKey,
+            },
+            200,
+            req,
+          );
+        }
+        return jsonResponse(
+          {
+            error:
+              'A calendar create for this interview is already in progress. Retry shortly.',
+            code: 'duplicate_calendar_request',
+            idempotency_key: idempotencyKey,
+          },
+          409,
+          req,
+        );
+      }
+
       const descriptionParts = [
         'Created from JobPilot Hiring Inbox (user-confirmed).',
         meetingUrl ? `Meeting: ${meetingUrl}` : null,
@@ -280,28 +423,13 @@ Deno.serve(async (req) => {
       ].filter(Boolean);
 
       const eventBody = {
+        id: googleEventId,
         summary: title,
         description: descriptionParts.join('\n'),
         start: { dateTime: startsAt, timeZone: timezone },
         end: { dateTime: endsAt, timeZone: timezone },
         location: meetingUrl || undefined,
       };
-
-      const calLease = await tryAcquireRateLimit(
-        supabase,
-        `calendar-create:${applicationId}:${startsAt}:${title.slice(0, 80)}`,
-        30,
-      );
-      if (!calLease) {
-        return jsonResponse(
-          {
-            error:
-              'A calendar create for this interview is already in progress or was just created. Wait and refresh.',
-            code: 'duplicate_calendar_request',
-          },
-          409,
-          req);
-      }
 
       const calRes = await fetchWithTimeout(
         'https://www.googleapis.com/calendar/v3/calendars/primary/events',
@@ -316,11 +444,37 @@ Deno.serve(async (req) => {
         GOOGLE_TIMEOUT_MS,
       );
 
-      if (!calRes.ok) {
+      let created: { id?: string; htmlLink?: string };
+      if (calRes.ok) {
+        created = await calRes.json();
+      } else if (calRes.status === 409) {
+        // Deterministic Google id already exists — safe retry path.
+        const getRes = await fetchWithTimeout(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(googleEventId)}`,
+          {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${googleAccess}` },
+          },
+          GOOGLE_TIMEOUT_MS,
+        );
+        if (!getRes.ok) {
+          console.error('calendar_get_after_conflict_failed', getRes.status);
+          return jsonResponse(
+            { error: 'Google Calendar API failed.' },
+            502,
+            req,
+          );
+        }
+        created = await getRes.json();
+      } else {
         console.error('calendar_create_failed', calRes.status);
         return jsonResponse({ error: 'Google Calendar API failed.' }, 502, req);
       }
-      const created = await calRes.json();
+
+      const externalId =
+        typeof created.id === 'string' && created.id
+          ? created.id
+          : googleEventId;
 
       const { data: eventRow, error: eventErr } = await supabase
         .from('application_events')
@@ -328,7 +482,8 @@ Deno.serve(async (req) => {
           user_id: userId,
           application_id: applicationId,
           provider: 'google',
-          external_event_id: created.id,
+          external_event_id: externalId,
+          idempotency_key: idempotencyKey,
           event_type: 'interview',
           title,
           starts_at: startsAt,
@@ -339,13 +494,59 @@ Deno.serve(async (req) => {
             html_link: created.htmlLink ?? null,
             email_id: email?.id ?? null,
             source: 'hiring-email-action',
+            idempotency_key: idempotencyKey,
           },
         })
         .select('*')
         .single();
 
       if (eventErr) {
+        // Concurrent insert or retry after provider success — return winner row.
+        if (
+          eventErr.code === '23505' ||
+          /duplicate|unique/i.test(eventErr.message)
+        ) {
+          const { data: raced } = await supabase
+            .from('application_events')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('idempotency_key', idempotencyKey)
+            .maybeSingle();
+          if (raced) {
+            return jsonResponse(
+              {
+                status: 'already_created',
+                event: raced,
+                google_event_id: raced.external_event_id,
+                html_link:
+                  typeof raced.metadata === 'object' &&
+                  raced.metadata &&
+                  !Array.isArray(raced.metadata) &&
+                  typeof (raced.metadata as Record<string, unknown>)
+                    .html_link === 'string'
+                    ? ((raced.metadata as Record<string, unknown>)
+                        .html_link as string)
+                    : (created.htmlLink ?? null),
+                idempotency_key: idempotencyKey,
+              },
+              200,
+              req,
+            );
+          }
+        }
         console.error('application_event_insert', eventErr.message);
+        return jsonResponse(
+          {
+            error:
+              'Google Calendar event exists but failed to save locally. Retry safely — the same logical event will not be duplicated.',
+            code: 'calendar_persist_failed',
+            google_event_id: externalId,
+            html_link: created.htmlLink ?? null,
+            idempotency_key: idempotencyKey,
+          },
+          500,
+          req,
+        );
       }
 
       if (email) {
@@ -354,7 +555,7 @@ Deno.serve(async (req) => {
           .update({
             metadata: {
               ...(email.metadata ?? {}),
-              calendar_event_id: created.id,
+              calendar_event_id: externalId,
               calendar_created_at: new Date().toISOString(),
             },
           })
@@ -370,16 +571,22 @@ Deno.serve(async (req) => {
         description: title,
         metadata: {
           application_id: applicationId,
-          external_event_id: created.id,
+          external_event_id: externalId,
+          idempotency_key: idempotencyKey,
         },
       });
 
-      return jsonResponse({
-        status: 'created',
-        event: eventRow,
-        google_event_id: created.id,
-        html_link: created.htmlLink ?? null,
-      }, 200, req);
+      return jsonResponse(
+        {
+          status: 'created',
+          event: eventRow,
+          google_event_id: externalId,
+          html_link: created.htmlLink ?? null,
+          idempotency_key: idempotencyKey,
+        },
+        200,
+        req,
+      );
     }
 
     return jsonResponse({ error: `Unknown action: ${action}` }, 400, req);

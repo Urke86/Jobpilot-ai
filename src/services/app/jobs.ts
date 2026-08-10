@@ -11,6 +11,13 @@ import {
 } from '@/services/supabase/client';
 import type { Enums } from '@/types/database';
 
+/** List/table projection — excludes large `job_description` / metadata blobs. */
+const JOB_LIST_COLUMNS =
+  'id, user_id, company_id, company_name_snapshot, job_title, job_url, source, location, remote_scope, salary_min, salary_max, salary_currency, employment_type, date_discovered, deadline, status, created_at, updated_at';
+
+/** Soft cap for list pages (closed-beta scale). Detail fetches remain unbounded. */
+const JOB_LIST_LIMIT = 500;
+
 export type CreateJobInput = {
   jobTitle: string;
   companyId?: string | null;
@@ -50,10 +57,11 @@ export async function listJobs(): Promise<JobRecord[]> {
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('jobs')
-    .select('*')
-    .order('date_discovered', { ascending: false });
+    .select(JOB_LIST_COLUMNS)
+    .order('date_discovered', { ascending: false })
+    .limit(JOB_LIST_LIMIT);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as JobRecord[];
 }
 
 export async function getJobById(id: string): Promise<JobRecord | null> {
@@ -73,11 +81,12 @@ export async function listJobsByCompany(
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from('jobs')
-    .select('*')
+    .select(JOB_LIST_COLUMNS)
     .eq('company_id', companyId)
-    .order('date_discovered', { ascending: false });
+    .order('date_discovered', { ascending: false })
+    .limit(JOB_LIST_LIMIT);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as JobRecord[];
 }
 
 export async function createJob(input: CreateJobInput): Promise<JobRecord> {
