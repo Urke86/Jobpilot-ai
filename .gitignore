@@ -67,3 +67,6 @@ vite.config.ts.timestamp-*
 *.sw?
 
 .e2e-session.json
+
+# Local source screenshot folder at repo root (public copies live in docs/screenshots/)
+/Screenshots/
