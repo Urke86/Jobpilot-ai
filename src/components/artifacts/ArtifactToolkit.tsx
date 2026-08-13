@@ -17,6 +17,11 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,7 +31,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import {
   ARTIFACT_TYPE_LABELS,
@@ -95,10 +99,18 @@ const TOOLKIT_TOOLS: {
   },
 ];
 
-function formatStructured(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string') return value;
-  return JSON.stringify(value, null, 2);
+function formatGenerationMeta(artifact: ApplicationArtifact): string {
+  const meta = getArtifactMetadata(artifact);
+  const parts: string[] = [`v${artifact.version}`];
+  if (meta.model) parts.push(meta.model);
+  if (meta.duration_ms != null) parts.push(`${meta.duration_ms}ms`);
+  if (meta.usage?.total_tokens != null) {
+    parts.push(`${meta.usage.total_tokens} tokens`);
+  }
+  if (meta.estimated_cost_usd != null) {
+    parts.push(`~$${meta.estimated_cost_usd}`);
+  }
+  return parts.join(' · ');
 }
 
 function EditableResult({
@@ -111,14 +123,17 @@ function EditableResult({
   const meta = getArtifactMetadata(artifact);
   const [draft, setDraft] = useState(artifact.content);
   const [saving, setSaving] = useState(false);
+  const [rawOpen, setRawOpen] = useState(false);
 
-  const structured = meta.result
-    ? formatStructured(meta.result)
-    : artifact.content;
+  const hasStructuredResult =
+    meta.result != null && typeof meta.result === 'object';
+  const rawStructured = hasStructuredResult
+    ? JSON.stringify(meta.result, null, 2)
+    : null;
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(draft || structured);
+      await navigator.clipboard.writeText(draft);
       toast.success('Copied');
     } catch {
       toast.error('Could not copy');
@@ -139,31 +154,23 @@ function EditableResult({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="outline">v{artifact.version}</Badge>
-        {meta.model ? <span>{meta.model}</span> : null}
-        {meta.duration_ms != null ? <span>{meta.duration_ms}ms</span> : null}
-        {meta.usage?.total_tokens != null ? (
-          <span>{meta.usage.total_tokens} tokens</span>
-        ) : null}
-        {meta.estimated_cost_usd != null ? (
-          <span>~${meta.estimated_cost_usd}</span>
-        ) : null}
-      </div>
-      {meta.result && typeof meta.result === 'object' ? (
-        <pre className="max-h-64 overflow-auto rounded-md border bg-muted/40 p-3 text-xs whitespace-pre-wrap">
-          {structured}
-        </pre>
-      ) : null}
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        {formatGenerationMeta(artifact)}
+      </p>
+
       <div className="space-y-2">
-        <Label>Editable content</Label>
+        <Label htmlFor={`artifact-content-${artifact.id}`}>
+          Artifact content
+        </Label>
         <Textarea
-          className="min-h-[160px] resize-y font-sans text-sm"
+          id={`artifact-content-${artifact.id}`}
+          className="min-h-[240px] resize-y font-sans text-sm leading-relaxed"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
       </div>
+
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" onClick={copy}>
           <Copy className="mr-1.5 h-3.5 w-3.5" />
@@ -178,6 +185,26 @@ function EditableResult({
           {saving ? 'Saving…' : 'Save edits'}
         </Button>
       </div>
+
+      {rawStructured ? (
+        <Collapsible open={rawOpen} onOpenChange={setRawOpen}>
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+            >
+              {rawOpen ? 'Hide raw output' : 'View raw output'}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              {rawStructured}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
     </div>
   );
 }
@@ -263,6 +290,13 @@ export function ArtifactToolkit({
     }
   };
 
+  const needsExtraInputs =
+    !!tool &&
+    (tool.needsQuestion ||
+      tool.needsInstruction ||
+      tool.needsContact ||
+      tool.needsFollowUpMeta);
+
   return (
     <>
       <Card className="border-blue-200 dark:border-blue-800">
@@ -321,106 +355,99 @@ export function ArtifactToolkit({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
           {tool ? (
             <>
-              <DialogHeader>
-                <DialogTitle>
-                  {ARTIFACT_TYPE_LABELS[tool.type]}
-                </DialogTitle>
+              <DialogHeader className="space-y-1.5 border-b px-6 py-4 text-left">
+                <DialogTitle>{ARTIFACT_TYPE_LABELS[tool.type]}</DialogTitle>
                 <DialogDescription>{tool.description}</DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
-                {tool.needsQuestion ? (
-                  <div className="space-y-2">
-                    <Label>Question</Label>
-                    <Textarea
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      placeholder="Paste the application or interview question…"
-                      className="min-h-[80px]"
-                    />
-                  </div>
-                ) : null}
-                {tool.needsInstruction ? (
-                  <div className="space-y-2">
-                    <Label>Custom instruction</Label>
-                    <Textarea
-                      value={userInstruction}
-                      onChange={(e) => setUserInstruction(e.target.value)}
-                      placeholder="e.g. Draft a short salary expectation response…"
-                      className="min-h-[80px]"
-                    />
-                  </div>
-                ) : null}
-                {tool.needsContact ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-4 overflow-y-auto px-6 py-4">
+                {needsExtraInputs ? (
+                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                    {tool.needsQuestion ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="artifact-question">Question</Label>
+                        <Textarea
+                          id="artifact-question"
+                          value={question}
+                          onChange={(e) => setQuestion(e.target.value)}
+                          placeholder="Paste the application or interview question…"
+                          className="min-h-[80px]"
+                        />
+                      </div>
+                    ) : null}
+                    {tool.needsInstruction ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="artifact-instruction">
+                          Custom instruction
+                        </Label>
+                        <Textarea
+                          id="artifact-instruction"
+                          value={userInstruction}
+                          onChange={(e) => setUserInstruction(e.target.value)}
+                          placeholder="e.g. Draft a short salary expectation response…"
+                          className="min-h-[80px]"
+                        />
+                      </div>
+                    ) : null}
+                    {tool.needsContact ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="artifact-contact-name">
+                            Contact name
+                          </Label>
+                          <Input
+                            id="artifact-contact-name"
+                            value={contactName}
+                            onChange={(e) => setContactName(e.target.value)}
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="artifact-contact-role">
+                            Contact role
+                          </Label>
+                          <Input
+                            id="artifact-contact-role"
+                            value={contactRole}
+                            onChange={(e) => setContactRole(e.target.value)}
+                            placeholder="e.g. Hiring manager"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                    {tool.needsFollowUpMeta ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="artifact-days-since">
+                          Days since application
+                        </Label>
+                        <Input
+                          id="artifact-days-since"
+                          type="number"
+                          min={0}
+                          value={daysSince}
+                          onChange={(e) => setDaysSince(e.target.value)}
+                          placeholder="Optional"
+                        />
+                      </div>
+                    ) : null}
                     <div className="space-y-2">
-                      <Label>Contact name</Label>
-                      <Input
-                        value={contactName}
-                        onChange={(e) => setContactName(e.target.value)}
-                        placeholder="Optional"
+                      <Label htmlFor="artifact-notes">Optional notes</Label>
+                      <Textarea
+                        id="artifact-notes"
+                        value={userNotes}
+                        onChange={(e) => setUserNotes(e.target.value)}
+                        placeholder="Extra context for this generation…"
+                        className="min-h-[60px]"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Contact role</Label>
-                      <Input
-                        value={contactRole}
-                        onChange={(e) => setContactRole(e.target.value)}
-                        placeholder="e.g. Hiring manager"
-                      />
-                    </div>
                   </div>
                 ) : null}
-                {tool.needsFollowUpMeta ? (
-                  <div className="space-y-2">
-                    <Label>Days since application</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={daysSince}
-                      onChange={(e) => setDaysSince(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </div>
-                ) : null}
-                {(tool.needsQuestion ||
-                  tool.needsInstruction ||
-                  tool.needsContact ||
-                  tool.needsFollowUpMeta) && (
-                  <div className="space-y-2">
-                    <Label>Optional notes</Label>
-                    <Textarea
-                      value={userNotes}
-                      onChange={(e) => setUserNotes(e.target.value)}
-                      placeholder="Extra context for this generation…"
-                      className="min-h-[60px]"
-                    />
-                  </div>
-                )}
-
-                <DialogFooter className="gap-2 sm:justify-between">
-                  <Button
-                    type="button"
-                    onClick={generate}
-                    disabled={generating}
-                    className="gap-1.5"
-                  >
-                    {generating ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                    {active ? 'Regenerate' : 'Generate'}
-                  </Button>
-                </DialogFooter>
-
-                <Separator />
 
                 {generating && !active ? (
-                  <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Generating…
                   </div>
@@ -445,7 +472,7 @@ export function ArtifactToolkit({
                 {history.length > 1 ? (
                   <div className="space-y-2">
                     <Label>Previous versions</Label>
-                    <div className="max-h-40 space-y-2 overflow-y-auto">
+                    <div className="max-h-36 space-y-2 overflow-y-auto">
                       {history.map((row) => (
                         <button
                           key={row.id}
@@ -474,6 +501,28 @@ export function ArtifactToolkit({
                   </div>
                 ) : null}
               </div>
+
+              <DialogFooter className="gap-2 border-t px-6 py-3 sm:justify-between">
+                <p className="self-center text-xs text-muted-foreground">
+                  {active
+                    ? 'Regenerate creates a new version.'
+                    : 'Uses your profile, CV, and job analysis.'}
+                </p>
+                <Button
+                  type="button"
+                  variant={active ? 'outline' : 'default'}
+                  onClick={generate}
+                  disabled={generating}
+                  className="gap-1.5"
+                >
+                  {generating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {active ? 'Regenerate' : 'Generate'}
+                </Button>
+              </DialogFooter>
             </>
           ) : null}
         </DialogContent>
